@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "updated": "2026-07-22",
   "source": "sherlock-project",
   "upstream": "https://raw.githubusercontent.com/sherlock-project/sherlock/master/sherlock_project/resources/data.json",
@@ -615,21 +615,21 @@
       "name": "Behance",
       "urlTemplate": "https://www.behance.net/{user}",
       "errorCodes": [
-        404
+        404,
+        410
       ],
-      "errorBodyMarkers": [
-        "Oops! We can't find that page"
-      ],
+      "errorBodyMarkers": [],
       "useHead": false,
       "categories": [
         "design"
       ],
-      "okBodyMarkers": [
-        "profile-info",
-        "ProfileInfo"
-      ],
+      "okBodyMarkers": [],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "status_code",
+      "okCodes": [
+        200
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Bezuzyteczna",
@@ -805,12 +805,11 @@
         404
       ],
       "errorBodyMarkers": [
-        "Not found",
         "Profile not found"
       ],
       "okBodyMarkers": [
-        "profileView",
-        "bsky.app/profile"
+        "bsky.app/profile",
+        "property=\"og:url\""
       ],
       "useHead": false,
       "categories": [
@@ -1461,7 +1460,13 @@
         "dev"
       ],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "legacy",
+      "blockBodyMarkers": [
+        "cf-challenge",
+        "cf-browser-verification",
+        "Just a moment",
+        "Access Denied"
+      ]
     },
     {
       "name": "Codepen",
@@ -2182,24 +2187,23 @@
     },
     {
       "name": "DockerHub",
-      "urlTemplate": "https://hub.docker.com/u/{user}",
+      "urlTemplate": "https://hub.docker.com/u/{user}/",
       "errorCodes": [
-        404
+        404,
+        410
       ],
-      "errorBodyMarkers": [
-        "\"message\":\"user not found\"",
-        "could not find user"
-      ],
+      "errorBodyMarkers": [],
       "useHead": false,
       "categories": [
         "dev"
       ],
-      "okBodyMarkers": [
-        "dockerHubHeader",
-        "orgName"
-      ],
+      "okBodyMarkers": [],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "status_code",
+      "okCodes": [
+        200
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Dribbble",
@@ -3789,7 +3793,11 @@
         "\"status\":\"fail\"",
         "LoginAndSignupPage",
         "\"force_login\"",
-        "accounts/login"
+        "accounts/login",
+        "cf-challenge",
+        "cf-browser-verification",
+        "Just a moment",
+        "Access Denied"
       ],
       "errorBodyMarkers": [
         "Sorry, this page isn't available",
@@ -4341,7 +4349,13 @@
         "dev"
       ],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "legacy",
+      "blockBodyMarkers": [
+        "cf-challenge",
+        "cf-browser-verification",
+        "Just a moment",
+        "Access Denied"
+      ]
     },
     {
       "name": "LemmyWorld",
@@ -4466,7 +4480,13 @@
         "ProfileCard"
       ],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "legacy",
+      "blockBodyMarkers": [
+        "cf-challenge",
+        "cf-browser-verification",
+        "Just a moment",
+        "Access Denied"
+      ]
     },
     {
       "name": "LinuxFR.org",
@@ -4706,7 +4726,13 @@
         "data-testid"
       ],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "legacy",
+      "blockBodyMarkers": [
+        "cf-challenge",
+        "cf-browser-verification",
+        "Just a moment",
+        "Access Denied"
+      ]
     },
     {
       "name": "Memrise",
@@ -5443,8 +5469,9 @@
         404
       ],
       "errorBodyMarkers": [
-        "Страница не найдена",
-        "page not found"
+        "This page does not exist on OK",
+        "page-not-found",
+        "страница не найдена"
       ],
       "categories": [
         "social"
@@ -5453,10 +5480,11 @@
       "rateLimitMs": 250,
       "okBodyMarkers": [
         "profile-user",
-        "hookBlock"
+        "hook_Block_UserProfile"
       ],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "legacy",
+      "blockBodyMarkers": []
     },
     {
       "name": "omg.lol",
@@ -5875,7 +5903,8 @@
       "name": "Pinterest",
       "urlTemplate": "https://www.pinterest.com/{user}/",
       "errorCodes": [
-        404
+        404,
+        410
       ],
       "errorBodyMarkers": [
         "Sorry! We couldn't find that page"
@@ -5885,11 +5914,12 @@
         "media"
       ],
       "okBodyMarkers": [
-        "profile-header",
-        "UserProfileHeader"
+        "pinterestapp:username",
+        "\"username\":\""
       ],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "legacy",
+      "blockBodyMarkers": []
     },
     {
       "name": "pixelfed.social",
@@ -6404,24 +6434,26 @@
       "name": "Reddit",
       "urlTemplate": "https://www.reddit.com/user/{user}",
       "errorCodes": [
-        404
+        404,
+        410
       ],
-      "errorBodyMarkers": [
-        "Sorry, nobody on Reddit goes by that name",
-        "page not found"
-      ],
+      "errorBodyMarkers": [],
       "useHead": false,
       "categories": [
         "social"
       ],
       "rateLimitMs": 400,
-      "okBodyMarkers": [
-        "ProfileTrophyShowcase",
-        "user-profile",
-        "\"kind\": \"t2\""
-      ],
+      "okBodyMarkers": [],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "status_code",
+      "urlProbe": "https://old.reddit.com/user/{user}",
+      "okCodes": [
+        200
+      ],
+      "trustHttpStatus": true,
+      "requestHeaders": {
+        "accept-language": "en-US,en;q=0.9"
+      }
     },
     {
       "name": "RedTube",
@@ -6526,23 +6558,23 @@
     },
     {
       "name": "Roblox",
-      "urlTemplate": "https://www.roblox.com/users/profile?username={user}",
+      "urlTemplate": "https://www.roblox.com/user.aspx?username={user}",
       "errorCodes": [
-        404
+        404,
+        410
       ],
-      "errorBodyMarkers": [
-        "Page cannot be found or no longer exists"
-      ],
+      "errorBodyMarkers": [],
       "useHead": false,
       "categories": [
         "gaming"
       ],
-      "okBodyMarkers": [
-        "profile-header",
-        "data-profileuserid"
-      ],
+      "okBodyMarkers": [],
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "status_code",
+      "okCodes": [
+        200
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "RocketTube",
@@ -7466,7 +7498,8 @@
       ],
       "errorCodes": [],
       "errorBodyMarkers": [
-        "tgme_icon_user"
+        "tgme_icon_user",
+        "tgme_username_link"
       ],
       "okBodyMarkers": [
         "tgme_page_title",
@@ -7638,16 +7671,14 @@
         "slardar_us_waf"
       ],
       "errorBodyMarkers": [
-        "Couldn't find this account",
-        "page-not-available",
         "statusCode\":10221",
-        "statusCode\":10222"
+        "statusCode\":10222",
+        "page-not-available"
       ],
       "okBodyMarkers": [
-        "uniqueId",
         "\"userInfo\"",
         "followerCount",
-        "__UNIVERSAL_DATA_FOR_REHYDRATION__"
+        "\"uniqueId\""
       ],
       "useHead": false,
       "categories": [
@@ -8229,12 +8260,14 @@
       ],
       "errorBodyMarkers": [
         "page_not_found",
-        "service_msg_null"
+        "service_msg_null",
+        "page_not_found_placeholder"
       ],
       "okBodyMarkers": [
         "owner_id",
         "wall_module",
-        "screen_name"
+        "screen_name",
+        "property=\"og:title\""
       ],
       "useHead": false,
       "categories": [
@@ -8242,7 +8275,8 @@
       ],
       "rateLimitMs": 200,
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "legacy",
+      "blockBodyMarkers": []
     },
     {
       "name": "VLR",
@@ -8618,7 +8652,9 @@
     {
       "name": "X",
       "urlTemplate": "https://x.com/{user}",
-      "errorCodes": [],
+      "errorCodes": [
+        404
+      ],
       "blockBodyMarkers": [
         "Something went wrong",
         "Rate limit",
@@ -8627,14 +8663,12 @@
         "To continue, please log in"
       ],
       "errorBodyMarkers": [
-        "This account doesn’t exist",
+        "User Profile Not Found",
         "This account doesn't exist",
         "Try searching for another"
       ],
       "okBodyMarkers": [
-        "\"screen_name\"",
-        "UserProfileHeader",
-        "profile_button"
+        "twitter://user?screen_name="
       ],
       "useHead": false,
       "categories": [
@@ -8779,24 +8813,22 @@
       "name": "YouTube",
       "urlTemplate": "https://www.youtube.com/@{user}",
       "errorCodes": [
-        404
+        404,
+        410
       ],
-      "errorBodyMarkers": [
-        "This page isn't available",
-        "This channel does not exist"
-      ],
-      "okBodyMarkers": [
-        "channelId",
-        "og:video:tag",
-        "subscriberCountText"
-      ],
+      "errorBodyMarkers": [],
+      "okBodyMarkers": [],
       "useHead": false,
       "categories": [
         "media"
       ],
       "rateLimitMs": 300,
       "curated": true,
-      "errorType": "legacy"
+      "errorType": "status_code",
+      "okCodes": [
+        200
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "znanylekarz.pl",

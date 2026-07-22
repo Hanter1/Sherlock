@@ -85,6 +85,70 @@ class OsintEngineClassifyTest {
     }
 
     @Test
+    fun tiktokI18nErrorStringDoesNotHideExistingProfile() {
+        val site = OsintSite(
+            name = "TikTok",
+            urlTemplate = "https://www.tiktok.com/@{user}",
+            errorBodyMarkers = listOf(
+                "Couldn't find this account",
+                "statusCode\":10221",
+            ),
+            okBodyMarkers = listOf("\"userInfo\"", "followerCount"),
+            errorType = SiteErrorType.LEGACY,
+        )
+        val body = """
+            {"webapp.user-detail":{"userInfo":{"user":{"uniqueId":"tiktok"},"stats":{"followerCount":1}}}}
+            "Couldn't find this account":"Couldn't find this account"
+        """.trimIndent()
+        val result = engine.classify(site, "https://www.tiktok.com/@tiktok", 200, body)
+        assertTrue(result is OsintEngine.CheckOutcome.Found)
+    }
+
+    @Test
+    fun tiktokStatusCodeMarksMissing() {
+        val site = OsintSite(
+            name = "TikTok",
+            urlTemplate = "https://www.tiktok.com/@{user}",
+            errorBodyMarkers = listOf("statusCode\":10221"),
+            okBodyMarkers = listOf("\"userInfo\"", "followerCount"),
+            errorType = SiteErrorType.LEGACY,
+        )
+        val body = """{"webapp.user-detail":{"statusCode":10221,"statusMsg":"user banned"}}"""
+        val result = engine.classify(site, "https://www.tiktok.com/@x", 200, body)
+        assertTrue(result is OsintEngine.CheckOutcome.Missing)
+    }
+
+    @Test
+    fun xGraphQlHeaderOn404IsNotFound() {
+        val site = OsintSite(
+            name = "X",
+            urlTemplate = "https://x.com/{user}",
+            errorBodyMarkers = listOf("User Profile Not Found"),
+            okBodyMarkers = listOf("twitter://user?screen_name=", "UserProfileHeader"),
+            errorCodes = setOf(404),
+            errorType = SiteErrorType.LEGACY,
+        )
+        // 404 wins via errorCodes even if GraphQL query text contains UserProfileHeader.
+        val body = """UserProfileHeader User Profile Not Found"""
+        val result = engine.classify(site, "https://x.com/nobody", 404, body)
+        assertTrue(result is OsintEngine.CheckOutcome.Missing)
+    }
+
+    @Test
+    fun antibotShellWithoutOkMarkersIsErrorNotFound() {
+        val site = OsintSite(
+            name = "VK",
+            urlTemplate = "https://vk.com/{user}",
+            okBodyMarkers = listOf("owner_id", "wall_module"),
+            errorBodyMarkers = listOf("page_not_found"),
+            errorType = SiteErrorType.LEGACY,
+        )
+        val body = """<html>captcha challenge login</html>"""
+        val result = engine.classify(site, "https://vk.com/durov", 200, body)
+        assertTrue(result is OsintEngine.CheckOutcome.Error)
+    }
+
+    @Test
     fun okMarkersRequiredAvoidFalsePositive() {
         val site = OsintCatalog.usernameSites.first { it.name == "Steam" }
         val result = engine.classify(site, "https://steamcommunity.com/id/x", 200, "<html>empty</html>")
@@ -129,7 +193,7 @@ class OsintEngineClassifyTest {
         )
         assertTrue(
             engine.classify(site, "https://vk.com/x", 200, "<html>login wall</html>")
-                is OsintEngine.CheckOutcome.Missing,
+                is OsintEngine.CheckOutcome.Error,
         )
     }
 

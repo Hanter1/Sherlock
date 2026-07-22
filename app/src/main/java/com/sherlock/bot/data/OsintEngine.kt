@@ -847,7 +847,17 @@ class OsintEngine(
         private val RETRYABLE_CODES = setOf(408, 425, 429, 500, 502, 503, 504)
 
         /** Public HTML is usually a login/JS shell — never treat bare 200 as a profile hit. */
-        internal val ANTIBOT_PROFILE_SITES: Set<String> = setOf("Instagram", "X")
+        internal val ANTIBOT_PROFILE_SITES: Set<String> = setOf(
+            "Instagram",
+            "X",
+            "VK",
+            "OK.ru",
+            "Pinterest",
+            "Medium",
+            "Linktree",
+            "LeetCode",
+            "Codeforces",
+        )
 
         internal fun countRedirects(response: Response): Int {
             var count = 0
