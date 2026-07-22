@@ -161,25 +161,5 @@ class AppSettings(context: Context) {
         val ALLOWED_PARALLEL = setOf(3, 6, 10)
         /** Empty = only bundled asset until user sets a URL. */
         const val DEFAULT_CATALOG_URL = ""
-
-        val DISCLAIMER_TEXT = """
-Sherlock Bot — OSINT-помощник с упором на Беларусь и открытые источники (публичные профили, DNS, эвристики).
-
-Не используйте приложение для:
-• доступа к закрытым базам и утечкам
-• преследования или нарушения закона РБ и других юрисдикций
-• обхода защиты сайтов и чужих аккаунтов
-
-Продолжая, вы подтверждаете законное и этичное использование.
-        """.trimIndent()
-
-        val EMAIL_CONSENT_TEXT = """
-Поиск по email отправляет данные третьим сторонам:
-
-• DNS-over-HTTPS — домен адреса в Cloudflare и/или Google (MX, SPF, DMARC)
-• Gravatar — MD5 нормализованного email (проверка публичного аватара)
-
-MD5 email не является анонимизацией. Можно отключить MX или Gravatar в настройках.
-        """.trimIndent()
     }
 }

@@ -11,7 +11,7 @@ Android OSINT-кабинет: проверка ника, телефона, email
 | [Installation](Installation.md) | APK, требования, разрешения |
 | [Usage](Usage.md) | Режимы, команды, отчёты, фильтры |
 | [Catalog](Catalog.md) | Площадки, remote-каталог, подпись |
-| [Privacy and Ethics](Privacy-and-Ethics.md) | Границы, ПДн, дисклеймер |
+| [Privacy and Ethics](Privacy-and-Ethics.md) | Открытые источники, хранение на устройстве |
 | [Building](Building.md) | JDK, SDK, debug / release |
 
 ## Ссылки

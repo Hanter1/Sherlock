@@ -321,7 +321,7 @@ class OsintEngine(
                 appendLine("• [VK](https://vk.com/search?c%5Bq%5D=$query&c%5Bsection%5D=people)")
                 appendLine("• [Google](https://www.google.com/search?q=$query)")
                 appendLine()
-                appendLine("Приложение не агрегирует персональные досье и не лезет в закрытые реестры.")
+                appendLine("Только публичные поисковые ссылки — без закрытых реестров.")
             }.trim(),
         )
     }

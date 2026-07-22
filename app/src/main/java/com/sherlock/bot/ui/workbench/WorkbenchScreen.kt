@@ -377,25 +377,6 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
             viewModel = viewModel,
         )
     }
-    if (state.showDisclaimer) {
-        AlertDialog(
-            onDismissRequest = {},
-            confirmButton = {
-                TextButton(onClick = viewModel::acceptDisclaimer) {
-                    Text("Принимаю", color = Cabinet.Accent)
-                }
-            },
-            title = { Text("Правовой дисклеймер", color = Cabinet.Text) },
-            text = {
-                Text(
-                    text = AppSettings.DISCLAIMER_TEXT,
-                    color = Cabinet.TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            containerColor = Cabinet.Panel,
-        )
-    }
     if (state.showClearConfirm) {
         AlertDialog(
             onDismissRequest = viewModel::dismissClearConfirm,
@@ -413,54 +394,6 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
             text = {
                 Text(
                     text = "История запросов и отчётов будет удалена с устройства.",
-                    color = Cabinet.TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            containerColor = Cabinet.Panel,
-        )
-    }
-    if (state.showEmailConsent) {
-        AlertDialog(
-            onDismissRequest = viewModel::declineEmailConsent,
-            confirmButton = {
-                TextButton(onClick = viewModel::acceptEmailConsent) {
-                    Text("Разрешить", color = Cabinet.Accent)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::declineEmailConsent) {
-                    Text("Отмена", color = Cabinet.TextSecondary)
-                }
-            },
-            title = { Text("Email и третьи стороны", color = Cabinet.Text) },
-            text = {
-                Text(
-                    text = AppSettings.EMAIL_CONSENT_TEXT,
-                    color = Cabinet.TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            containerColor = Cabinet.Panel,
-        )
-    }
-    if (state.showSharePiiConfirm) {
-        AlertDialog(
-            onDismissRequest = viewModel::dismissSharePiiConfirm,
-            confirmButton = {
-                TextButton(onClick = viewModel::confirmShareWithRedaction) {
-                    Text("С маскированием", color = Cabinet.Accent)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::confirmShareAsIs) {
-                    Text("Как есть", color = Cabinet.Danger)
-                }
-            },
-            title = { Text("В отчёте есть ПДн", color = Cabinet.Text) },
-            text = {
-                Text(
-                    text = "Найдены телефон и/или email. Можно замаскировать перед передачей во внешнее приложение.",
                     color = Cabinet.TextSecondary,
                     style = MaterialTheme.typography.bodyMedium,
                 )

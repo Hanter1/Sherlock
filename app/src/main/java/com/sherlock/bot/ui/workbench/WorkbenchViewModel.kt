@@ -154,7 +154,6 @@ class WorkbenchViewModel(
             persistHistory = appSettings.persistHistory,
             usernameCacheEntries = bot.usernameCacheSize(),
             usernameCacheSummary = bot.usernameCacheSummary(),
-            showDisclaimer = !appSettings.disclaimerAccepted,
             pinnedMessageId = appSettings.pinnedMessageId,
             pendingMode = appSettings.pendingMode,
             catalogUrl = appSettings.catalogUrl,
@@ -179,7 +178,6 @@ class WorkbenchViewModel(
     private var scanJob: Job? = null
     private val lastProgress = CopyOnWriteArrayList<SiteCheckProgress>()
     private var lastScanUsername: String = ""
-    private var pendingEmailQuery: String? = null
     private var pendingShareText: String? = null
     private var pendingShareAsShare: Boolean = true
     private val appInForeground = AtomicBoolean(true)
@@ -297,11 +295,6 @@ class WorkbenchViewModel(
             _state.update { it.copy(isBusy = false) }
             return
         }
-        if (requiresEmailConsent(text)) {
-            pendingEmailQuery = text
-            _state.update { it.copy(isBusy = false, showEmailConsent = true) }
-            return
-        }
         respond(text)
     }
 
@@ -312,30 +305,11 @@ class WorkbenchViewModel(
 
     fun acceptEmailConsent() {
         appSettings.emailLookupConsent = true
-        val query = pendingEmailQuery
-        pendingEmailQuery = null
         _state.update { it.copy(showEmailConsent = false) }
-        if (query != null) {
-            _state.update { it.copy(isBusy = true) }
-            respond(query)
-        }
     }
 
     fun declineEmailConsent() {
-        pendingEmailQuery = null
         _state.update { it.copy(showEmailConsent = false) }
-        _toastEvents.tryEmit("Email-поиск отменён")
-    }
-
-    private fun requiresEmailConsent(text: String): Boolean {
-        if (appSettings.emailLookupConsent) return false
-        val trimmed = text.trim()
-        if (trimmed.startsWith("/email", ignoreCase = true)) {
-            return trimmed.substringAfter(" ", "").trim().isNotBlank()
-        }
-        val mode = _state.value.pendingMode.takeIf { it != SearchMode.NONE }
-            ?: QueryClassifier.detectMode(trimmed)
-        return mode == SearchMode.EMAIL
     }
 
     fun setHideInRecents(value: Boolean) {
@@ -625,17 +599,8 @@ class WorkbenchViewModel(
 
     private fun emitShareOrCopy(messageId: String, asShare: Boolean) {
         val text = _state.value.messages.find { it.id == messageId }?.text ?: return
-        if (appSettings.redactPiiOnShare) {
-            deliverShareOrCopy(PiiRedactor.redact(text), asShare)
-            return
-        }
-        if (PiiRedactor.containsPii(text)) {
-            pendingShareText = text
-            pendingShareAsShare = asShare
-            _state.update { it.copy(showSharePiiConfirm = true) }
-            return
-        }
-        deliverShareOrCopy(text, asShare)
+        val out = if (appSettings.redactPiiOnShare) PiiRedactor.redact(text) else text
+        deliverShareOrCopy(out, asShare)
     }
 
     private fun deliverShareOrCopy(text: String, asShare: Boolean) {

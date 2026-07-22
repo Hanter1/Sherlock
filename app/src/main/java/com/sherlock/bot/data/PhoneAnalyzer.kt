@@ -172,7 +172,6 @@ object PhoneAnalyzer {
                     appendLine(note)
                     appendLine()
                 }
-                appendLine("Используйте только законно и с уважением к приватности (в т.ч. по праву РБ).")
             }.trim(),
         )
     }
