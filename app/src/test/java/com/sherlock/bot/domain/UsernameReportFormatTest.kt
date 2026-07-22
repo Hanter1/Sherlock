@@ -75,4 +75,19 @@ class UsernameReportFormatTest {
         assertTrue(text.contains("из кэша"))
         assertFalse(text.contains("Время:"))
     }
+
+    @Test
+    fun cacheLabelShowsAgeAndRemaining() {
+        val now = System.currentTimeMillis()
+        val cached = report.copy(
+            fromCache = true,
+            elapsedMs = 0,
+            cacheSavedAtMs = now - 3_600_000L,
+            cacheTtlMs = 24 * 3_600_000L,
+        )
+        val text = BotInteractor().formatUsernameReport(cached).text
+        assertTrue(text.contains("из кэша"))
+        assertTrue(text.contains("возраст"))
+        assertTrue(text.contains("ещё ~"))
+    }
 }

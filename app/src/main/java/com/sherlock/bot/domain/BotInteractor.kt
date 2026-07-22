@@ -1,6 +1,7 @@
 package com.sherlock.bot.domain
 
 import com.sherlock.bot.data.BotAction
+import com.sherlock.bot.data.CacheAge
 import com.sherlock.bot.data.ChatHistoryCodec
 import com.sherlock.bot.data.ChatMessage
 import com.sherlock.bot.data.OsintCatalog
@@ -11,6 +12,7 @@ import com.sherlock.bot.data.SiteCategories
 import com.sherlock.bot.data.SiteCheckProgress
 import com.sherlock.bot.data.SiteCheckStatus
 import com.sherlock.bot.data.SiteHit
+import com.sherlock.bot.data.UsernameQueue
 import com.sherlock.bot.data.UsernameReportFilter
 import com.sherlock.bot.data.UsernameReportMerge
 import java.util.LinkedHashMap
@@ -73,14 +75,14 @@ class BotInteractor(
     fun help(): ChatMessage = bot(
         text = """
             Команды:
-            /username <ник> — проверка на площадках (пресет в настройках; Δ при повторе)
+            /username <ник> — проверка (несколько через пробел/запятую, до ${UsernameQueue.MAX_NICKS})
             /compare <ник1> <ник2> — общие / только A / только B
             /phone <номер> — Беларусь +375 (приоритет), также +7/+380/+1/+44
             /email <почта> — MX + SPF/DMARC + Gravatar (после согласия; тумблеры в настройках)
             /name <ФИО> — поиск Google BY / Yandex BY / VK
             /clear — очистить историю чата
             /about — версия приложения и каталогов
-            /settings — параллелизм, Instagram/X, кэш, remote-каталог
+            /settings — параллелизм, пресет, кэш, remote-каталог
             
             Под отчётом: фильтры, «Закрепить», «Повторить без кэша», «Добить ошибки», экспорт MD/JSON.
             Поиск по истории — лупа в шапке.
@@ -90,7 +92,10 @@ class BotInteractor(
     )
 
     fun askFor(mode: SearchMode): ChatMessage = when (mode) {
-        SearchMode.USERNAME -> bot("Пришлите никнейм (без @ или с @). Пример: `durov`")
+        SearchMode.USERNAME -> bot(
+            "Пришлите никнейм (без @ или с @). Пример: `durov`\n" +
+                "Несколько ников: `durov, telegram` (до ${UsernameQueue.MAX_NICKS})",
+        )
         SearchMode.PHONE -> bot("Пришлите телефон. Пример РБ: `+375291234567` (также +7 / +380 / +1 / +44)")
         SearchMode.EMAIL -> bot("Пришлите email. Пример: `name@mail.ru`")
         SearchMode.FULL_NAME -> bot("Пришлите ФИО. Пример: `Іваноў Іван` или `Иванов Иван`")
@@ -133,7 +138,7 @@ class BotInteractor(
                     listOf(askFor(SearchMode.USERNAME)) to SearchMode.USERNAME
                 } else {
                     requireOnline()?.let { return listOf(it) to SearchMode.NONE }
-                    listOf(formatResult(osint.searchUsername(arg, onScanProgress))) to SearchMode.NONE
+                    handleUsernameArg(arg, onScanProgress)
                 }
             }
             trimmed.startsWith("/compare", true) -> {
@@ -178,7 +183,7 @@ class BotInteractor(
 
         val result = runCatching {
             when (mode) {
-                SearchMode.USERNAME -> osint.searchUsername(trimmed, onScanProgress)
+                SearchMode.USERNAME -> return handleUsernameArg(trimmed, onScanProgress)
                 SearchMode.PHONE -> osint.analyzePhone(trimmed)
                 SearchMode.EMAIL -> osint.analyzeEmail(trimmed)
                 SearchMode.FULL_NAME -> osint.analyzeFullName(trimmed)
@@ -244,6 +249,49 @@ class BotInteractor(
         return listOf(formatResult(osint.compareUsernames(a, b, onScanProgress))) to SearchMode.NONE
     }
 
+    private suspend fun handleUsernameArg(
+        arg: String,
+        onScanProgress: suspend (SiteCheckProgress) -> Unit,
+    ): Pair<List<ChatMessage>, SearchMode> {
+        val parsed = UsernameQueue.parse(arg)
+        if (parsed.nicks.isEmpty()) {
+            val hint = if (parsed.rejected.isNotEmpty()) {
+                "Некорректные ники: ${parsed.rejected.joinToString()}"
+            } else {
+                "Нужен никнейм 2–32 символа: буквы, цифры, . _ -"
+            }
+            return listOf(bot(hint)) to SearchMode.USERNAME
+        }
+        val replies = mutableListOf<ChatMessage>()
+        if (parsed.rejected.isNotEmpty()) {
+            replies += bot("Пропущены: ${parsed.rejected.joinToString()}")
+        }
+        if (parsed.truncated) {
+            replies += bot("Очередь обрезана до ${UsernameQueue.MAX_NICKS} ников.")
+        }
+        if (parsed.nicks.size > 1) {
+            replies += bot("Очередь: ${parsed.nicks.joinToString(" · ")}")
+        }
+        parsed.nicks.forEachIndexed { index, nick ->
+            val queueIndex = index + 1
+            val queueTotal = parsed.nicks.size
+            val report = osint.searchUsername(
+                raw = nick,
+                onProgress = { progress ->
+                    onScanProgress(
+                        progress.copy(
+                            username = nick,
+                            queueIndex = if (queueTotal > 1) queueIndex else null,
+                            queueTotal = if (queueTotal > 1) queueTotal else null,
+                        ),
+                    )
+                },
+            )
+            replies += formatResult(report)
+        }
+        return replies to SearchMode.NONE
+    }
+
     suspend fun rescanUsername(
         username: String,
         onScanProgress: suspend (SiteCheckProgress) -> Unit = {},
@@ -268,9 +316,22 @@ class BotInteractor(
 
     fun usernameCacheSize(): Int = osint.usernameCacheSize()
 
-    fun formatScanProgress(username: String, lines: List<String>, done: Int, total: Int): String {
+    fun usernameCacheSummary(): String = osint.usernameCacheSummary()
+
+    fun formatScanProgress(
+        username: String,
+        lines: List<String>,
+        done: Int,
+        total: Int,
+        queueIndex: Int? = null,
+        queueTotal: Int? = null,
+    ): String {
         return buildString {
-            appendLine("Сканирую `$username`… $done/$total")
+            if (queueIndex != null && queueTotal != null && queueTotal > 1) {
+                appendLine("Очередь $queueIndex/$queueTotal · `$username`… $done/$total")
+            } else {
+                appendLine("Сканирую `$username`… $done/$total")
+            }
             appendLine("Нажмите ■ Стоп, чтобы прервать")
             if (lines.isNotEmpty()) {
                 appendLine()
@@ -327,7 +388,14 @@ class BotInteractor(
         val body = buildString {
             appendLine("—— Сводка ——")
             when {
-                result.fromCache -> appendLine("Ник `${result.username}` · из кэша")
+                result.fromCache -> {
+                    val age = CacheAge.formatCacheLine(result.cacheSavedAtMs, result.cacheTtlMs)
+                    if (age != null) {
+                        appendLine("Ник `${result.username}` · из кэша · $age")
+                    } else {
+                        appendLine("Ник `${result.username}` · из кэша")
+                    }
+                }
                 result.cancelled -> appendLine("Скан остановлен · частичный отчёт по `${result.username}`")
                 else -> appendLine("Ник `${result.username}`")
             }

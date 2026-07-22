@@ -34,6 +34,10 @@ sealed class OsintResult {
         val elapsedMs: Long,
         val cancelled: Boolean = false,
         val fromCache: Boolean = false,
+        /** When [fromCache], wall-clock time the entry was saved. */
+        val cacheSavedAtMs: Long? = null,
+        /** Disk-cache TTL used for remaining-time hint (null for session-only). */
+        val cacheTtlMs: Long? = null,
         /** Human-readable Δ vs previous scan of the same nick (if any). */
         val previousDiff: String? = null,
         /**
@@ -49,10 +53,22 @@ sealed class OsintResult {
     ) : OsintResult()
 }
 
+enum class HitConfidence(val id: String, val label: String) {
+    CONFIRMED("confirmed", "подтверждено"),
+    UNCERTAIN("uncertain", "неуверенно"),
+    ;
+
+    companion object {
+        fun fromId(raw: String?): HitConfidence =
+            entries.firstOrNull { it.id.equals(raw, ignoreCase = true) } ?: CONFIRMED
+    }
+}
+
 data class SiteHit(
     val site: String,
     val url: String,
     val categories: List<String> = emptyList(),
+    val confidence: HitConfidence = HitConfidence.CONFIRMED,
 )
 
 enum class SiteCheckStatus {
@@ -69,4 +85,9 @@ data class SiteCheckProgress(
     val reason: String? = null,
     val done: Int,
     val total: Int,
+    /** Nick being scanned (useful for multi-nick queues). */
+    val username: String? = null,
+    /** 1-based index in a username queue, if any. */
+    val queueIndex: Int? = null,
+    val queueTotal: Int? = null,
 )

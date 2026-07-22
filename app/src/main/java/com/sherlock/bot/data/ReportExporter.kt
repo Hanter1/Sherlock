@@ -27,11 +27,16 @@ object ReportExporter {
                 appendLine("- **Время:** ${SiteCategories.formatElapsed(report.elapsedMs)}")
             } else {
                 appendLine("- **Источник:** кэш")
+                CacheAge.formatCacheLine(report.cacheSavedAtMs, report.cacheTtlMs)?.let {
+                    appendLine("- **Кэш:** $it")
+                }
             }
             if (report.cancelled) appendLine("- **Статус:** остановлен (частичный)")
             appendLine()
             if (report.found.isNotEmpty()) {
                 appendLine("## Найдены")
+                appendLine()
+                appendLine("_Уверенность: ${HitConfidence.CONFIRMED.label}_")
                 appendLine()
                 val groups = linkedMapOf<String, MutableList<SiteHit>>()
                 for (hit in report.found) {
@@ -53,7 +58,7 @@ object ReportExporter {
             if (report.uncertain.isNotEmpty()) {
                 appendLine("## Неуверенно")
                 appendLine()
-                appendLine("_HTTP ок, но нет маркера профиля — возможны ложные срабатывания._")
+                appendLine("_Уверенность: ${HitConfidence.UNCERTAIN.label} — HTTP ок, но нет маркера профиля._")
                 appendLine()
                 report.uncertain.forEach { appendLine("- [${it.site}](${it.url})") }
                 appendLine()
@@ -79,6 +84,11 @@ object ReportExporter {
         val obj = UsernameReportCodec.encodeReport(report)
         obj.put("exportedAt", isoNow())
         obj.put("fromCache", report.fromCache)
+        report.cacheSavedAtMs?.let { obj.put("cacheSavedAtMs", it) }
+        report.cacheTtlMs?.let { obj.put("cacheTtlMs", it) }
+        CacheAge.formatCacheLine(report.cacheSavedAtMs, report.cacheTtlMs)?.let {
+            obj.put("cacheAge", it)
+        }
         return obj.toString(2) + "\n"
     }
 

@@ -56,12 +56,24 @@ class OsintEngine(
             if (bypassCache) {
                 // keep previous for Δ before wipe
             } else {
-                sessionCache.get(username)?.let { cached ->
-                    return@withContext cached.copy(fromCache = true, elapsedMs = 0, previousDiff = null)
+                sessionCache.getEntry(username)?.let { entry ->
+                    return@withContext entry.report.copy(
+                        fromCache = true,
+                        elapsedMs = 0,
+                        previousDiff = null,
+                        cacheSavedAtMs = entry.savedAtMs,
+                        cacheTtlMs = null,
+                    )
                 }
-                diskCache?.get(username)?.let { cached ->
-                    sessionCache.put(username, cached)
-                    return@withContext cached.copy(fromCache = true, elapsedMs = 0, previousDiff = null)
+                diskCache?.getEntry(username)?.let { entry ->
+                    sessionCache.put(username, entry.report)
+                    return@withContext entry.report.copy(
+                        fromCache = true,
+                        elapsedMs = 0,
+                        previousDiff = null,
+                        cacheSavedAtMs = entry.savedAtMs,
+                        cacheTtlMs = diskCache.ttlMillis,
+                    )
                 }
             }
         }
@@ -105,6 +117,7 @@ class OsintEngine(
                                 url = outcome.url,
                                 done = n,
                                 total = sites.size,
+                                username = username,
                             )
                             is CheckOutcome.Uncertain -> SiteCheckProgress(
                                 site = site.name,
@@ -113,12 +126,14 @@ class OsintEngine(
                                 reason = outcome.reason,
                                 done = n,
                                 total = sites.size,
+                                username = username,
                             )
                             is CheckOutcome.Missing -> SiteCheckProgress(
                                 site = site.name,
                                 status = SiteCheckStatus.MISSING,
                                 done = n,
                                 total = sites.size,
+                                username = username,
                             )
                             is CheckOutcome.Error -> SiteCheckProgress(
                                 site = site.name,
@@ -126,6 +141,7 @@ class OsintEngine(
                                 reason = outcome.reason,
                                 done = n,
                                 total = sites.size,
+                                username = username,
                             )
                         }
                         onProgress(progress)
@@ -183,7 +199,27 @@ class OsintEngine(
         diskCache?.clear()
     }
 
-    fun usernameCacheSize(): Int = sessionCache.size() + (diskCache?.size() ?: 0)
+    fun usernameCacheSize(): Int {
+        val keys = sessionCache.keys().toMutableSet()
+        keys += diskCache?.keys().orEmpty()
+        return keys.size
+    }
+
+    fun usernameCacheSummary(): String {
+        val n = usernameCacheSize()
+        if (n == 0) return "пусто"
+        val oldest = listOfNotNull(
+            sessionCache.oldestSavedAtMs(),
+            diskCache?.oldestSavedAtMs(),
+        ).minOrNull()
+        val age = oldest?.let { CacheAge.formatAge(it) }
+        val ttlHours = TimeUnit.MILLISECONDS.toHours(diskCache?.ttlMillis ?: UsernameDiskCache.DEFAULT_TTL_MS)
+        return buildString {
+            append("$n")
+            if (age != null) append(" · старше $age")
+            append(" · TTL ${ttlHours}ч")
+        }
+    }
 
     fun analyzePhone(raw: String): OsintResult.InfoReport = PhoneAnalyzer.analyze(raw)
 
@@ -427,6 +463,7 @@ class OsintEngine(
                 site = it.site,
                 url = it.url,
                 categories = categoriesByName[it.site].orEmpty(),
+                confidence = HitConfidence.CONFIRMED,
             )
         }
         val uncertain = results.mapNotNull { it as? CheckOutcome.Uncertain }.map {
@@ -434,6 +471,7 @@ class OsintEngine(
                 site = it.site,
                 url = it.url,
                 categories = categoriesByName[it.site].orEmpty(),
+                confidence = HitConfidence.UNCERTAIN,
             )
         }
         val notFound = results.mapNotNull { it as? CheckOutcome.Missing }.map { it.site }

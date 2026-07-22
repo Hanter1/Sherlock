@@ -20,14 +20,18 @@ class UsernameDiskCache(
     )
 
     @Synchronized
-    fun get(username: String): OsintResult.UsernameReport? {
+    fun get(username: String): OsintResult.UsernameReport? =
+        getEntry(username)?.report
+
+    @Synchronized
+    fun getEntry(username: String): Entry? {
         val key = username.lowercase()
         val entry = readAll()[key] ?: return null
         if (clock() - entry.savedAtMs > ttlMs) {
             removeKey(key)
             return null
         }
-        return entry.report
+        return entry
     }
 
     @Synchronized
@@ -37,7 +41,11 @@ class UsernameDiskCache(
         val all = readAll().toMutableMap()
         all[key] = Entry(
             savedAtMs = clock(),
-            report = report.copy(fromCache = false),
+            report = report.copy(
+                fromCache = false,
+                cacheSavedAtMs = null,
+                cacheTtlMs = null,
+            ),
         )
         writeAll(all)
     }
@@ -54,6 +62,19 @@ class UsernameDiskCache(
 
     @Synchronized
     fun size(): Int = readAll().count { clock() - it.value.savedAtMs <= ttlMs }
+
+    @Synchronized
+    fun keys(): Set<String> =
+        readAll().filterValues { clock() - it.savedAtMs <= ttlMs }.keys
+
+    @Synchronized
+    fun oldestSavedAtMs(): Long? =
+        readAll()
+            .filterValues { clock() - it.savedAtMs <= ttlMs }
+            .values
+            .minOfOrNull { it.savedAtMs }
+
+    val ttlMillis: Long get() = ttlMs
 
     private fun removeKey(key: String) {
         val all = readAll().toMutableMap()
@@ -118,14 +139,7 @@ object UsernameReportCodec {
             .put(
                 "found",
                 JSONArray().also { arr ->
-                    report.found.forEach { hit ->
-                        arr.put(
-                            JSONObject()
-                                .put("site", hit.site)
-                                .put("url", hit.url)
-                                .put("categories", JSONArray(hit.categories)),
-                        )
-                    }
+                    report.found.forEach { hit -> arr.put(encodeHit(hit)) }
                 },
             )
             .put("notFound", JSONArray(report.notFound))
@@ -133,48 +147,34 @@ object UsernameReportCodec {
             .put(
                 "uncertain",
                 JSONArray().also { arr ->
-                    report.uncertain.forEach { hit ->
-                        arr.put(
-                            JSONObject()
-                                .put("site", hit.site)
-                                .put("url", hit.url)
-                                .put("categories", JSONArray(hit.categories)),
-                        )
-                    }
+                    report.uncertain.forEach { hit -> arr.put(encodeHit(hit)) }
                 },
             )
             .also { json ->
                 report.previousDiff?.let { json.put("previousDiff", it) }
+                report.cacheSavedAtMs?.let { json.put("cacheSavedAtMs", it) }
+                report.cacheTtlMs?.let { json.put("cacheTtlMs", it) }
             }
     }
+
+    fun encodeHit(hit: SiteHit): JSONObject =
+        JSONObject()
+            .put("site", hit.site)
+            .put("url", hit.url)
+            .put("categories", JSONArray(hit.categories))
+            .put("confidence", hit.confidence.id)
 
     fun decodeReport(obj: JSONObject): OsintResult.UsernameReport {
         val foundArr = obj.optJSONArray("found") ?: JSONArray()
         val found = buildList {
             for (i in 0 until foundArr.length()) {
-                val hit = foundArr.getJSONObject(i)
-                val cats = hit.optJSONArray("categories")
-                add(
-                    SiteHit(
-                        site = hit.getString("site"),
-                        url = hit.getString("url"),
-                        categories = cats?.toStringList().orEmpty(),
-                    ),
-                )
+                add(decodeHit(foundArr.getJSONObject(i), defaultConfidence = HitConfidence.CONFIRMED))
             }
         }
         val uncertainArr = obj.optJSONArray("uncertain") ?: JSONArray()
         val uncertain = buildList {
             for (i in 0 until uncertainArr.length()) {
-                val hit = uncertainArr.getJSONObject(i)
-                val cats = hit.optJSONArray("categories")
-                add(
-                    SiteHit(
-                        site = hit.getString("site"),
-                        url = hit.getString("url"),
-                        categories = cats?.toStringList().orEmpty(),
-                    ),
-                )
+                add(decodeHit(uncertainArr.getJSONObject(i), defaultConfidence = HitConfidence.UNCERTAIN))
             }
         }
         return OsintResult.UsernameReport(
@@ -186,7 +186,24 @@ object UsernameReportCodec {
             elapsedMs = obj.optLong("elapsedMs", 0L),
             cancelled = obj.optBoolean("cancelled", false),
             fromCache = false,
+            cacheSavedAtMs = obj.optLong("cacheSavedAtMs").takeIf { obj.has("cacheSavedAtMs") },
+            cacheTtlMs = obj.optLong("cacheTtlMs").takeIf { obj.has("cacheTtlMs") },
             previousDiff = obj.optString("previousDiff", "").takeIf { it.isNotBlank() },
+        )
+    }
+
+    fun decodeHit(hit: JSONObject, defaultConfidence: HitConfidence): SiteHit {
+        val cats = hit.optJSONArray("categories")
+        val confidence = if (hit.has("confidence")) {
+            HitConfidence.fromId(hit.optString("confidence"))
+        } else {
+            defaultConfidence
+        }
+        return SiteHit(
+            site = hit.getString("site"),
+            url = hit.getString("url"),
+            categories = cats?.toStringList().orEmpty(),
+            confidence = confidence,
         )
     }
 

@@ -36,6 +36,8 @@ object UsernameReportMerge {
             errors = errors.sorted(),
             elapsedMs = previous.elapsedMs + partial.elapsedMs,
             fromCache = false,
+            cacheSavedAtMs = null,
+            cacheTtlMs = null,
             cancelled = previous.cancelled || partial.cancelled,
             previousDiff = null,
         )

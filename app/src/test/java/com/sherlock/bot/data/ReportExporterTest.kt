@@ -40,6 +40,24 @@ class ReportExporterTest {
     }
 
     @Test
+    fun jsonIncludesConfidence() {
+        val withUncertain = report.copy(
+            uncertain = listOf(
+                SiteHit("npm", "https://www.npmjs.com/~alice", confidence = HitConfidence.UNCERTAIN),
+            ),
+        )
+        val json = ReportExporter.toJson(withUncertain)
+        assertTrue(json.contains("\"confidence\": \"confirmed\"") || json.contains("\"confidence\":\"confirmed\""))
+        assertTrue(json.contains("\"confidence\": \"uncertain\"") || json.contains("\"confidence\":\"uncertain\""))
+    }
+
+    @Test
+    fun markdownMentionsConfidence() {
+        val md = ReportExporter.toMarkdown(report)
+        assertTrue(md.contains("подтверждено"))
+    }
+
+    @Test
     fun writeExportCreatesFile() {
         val dir = File.createTempFile("exports", "").also {
             it.delete()

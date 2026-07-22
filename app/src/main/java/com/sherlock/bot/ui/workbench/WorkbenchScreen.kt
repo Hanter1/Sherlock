@@ -1112,7 +1112,10 @@ private fun SettingsDialog(
                     checked = state.catalogAllowAnyHost,
                     onCheckedChange = viewModel::setCatalogAllowAnyHost,
                 )
-                Text("Кэш ников: ${state.usernameCacheEntries}", color = Cabinet.TextMuted)
+                Text(
+                    "Кэш ников: ${state.usernameCacheSummary}",
+                    color = Cabinet.TextMuted,
+                )
                 MiniBtn("Очистить кэш", viewModel::clearUsernameCache)
             }
         },

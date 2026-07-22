@@ -87,6 +87,7 @@ data class WorkbenchUiState(
     val hideInRecents: Boolean = true,
     val persistHistory: Boolean = true,
     val usernameCacheEntries: Int = 0,
+    val usernameCacheSummary: String = "пусто",
     val catalogUrl: String = "",
     val catalogSource: String = "asset",
     val catalogVersion: Int = 0,
@@ -145,6 +146,7 @@ class WorkbenchViewModel(
             hideInRecents = appSettings.hideInRecents,
             persistHistory = appSettings.persistHistory,
             usernameCacheEntries = bot.usernameCacheSize(),
+            usernameCacheSummary = bot.usernameCacheSummary(),
             showDisclaimer = !appSettings.disclaimerAccepted,
             pinnedMessageId = appSettings.pinnedMessageId,
             pendingMode = appSettings.pendingMode,
@@ -825,15 +827,21 @@ class WorkbenchViewModel(
                     pendingMode = _state.value.pendingMode,
                     onScanProgress = { progress: SiteCheckProgress ->
                         lastProgress.add(progress)
+                        val nick = progress.username ?: lastScanUsername
+                        if (!progress.username.isNullOrBlank()) {
+                            lastScanUsername = progress.username
+                        }
                         showStatus(
                             text = bot.formatScanProgress(
-                                username = lastScanUsername,
+                                username = nick,
                                 lines = lastProgress.map { bot.progressLine(it) },
                                 done = progress.done,
                                 total = progress.total,
+                                queueIndex = progress.queueIndex,
+                                queueTotal = progress.queueTotal,
                             ),
                             progress = progress,
-                            username = lastScanUsername,
+                            username = nick,
                         )
                     },
                 )
@@ -896,6 +904,7 @@ class WorkbenchViewModel(
                 hideInRecents = appSettings.hideInRecents,
                 persistHistory = appSettings.persistHistory,
                 usernameCacheEntries = bot.usernameCacheSize(),
+                usernameCacheSummary = bot.usernameCacheSummary(),
                 catalogUrl = appSettings.catalogUrl,
                 catalogSource = info?.source ?: it.catalogSource,
                 catalogVersion = info?.version ?: it.catalogVersion,

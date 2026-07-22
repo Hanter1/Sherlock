@@ -61,21 +61,24 @@ class UsernameDiskCacheTest {
     }
 
     @Test
-    fun ignoresCancelled() {
-        val file = File.createTempFile("uname-cache-c", ".json")
+    fun getEntryExposesSavedAt() {
+        val file = File.createTempFile("uname-cache-age", ".json")
         file.deleteOnExit()
-        val cache = UsernameDiskCache(file = file)
+        var now = 5_000_000L
+        val cache = UsernameDiskCache(file = file, ttlMs = 60_000L, clock = { now })
         cache.put(
-            "x",
+            "bob",
             OsintResult.UsernameReport(
-                username = "x",
+                username = "bob",
                 found = emptyList(),
-                notFound = emptyList(),
+                notFound = listOf("GitHub"),
                 errors = emptyList(),
-                elapsedMs = 1,
-                cancelled = true,
+                elapsedMs = 10,
             ),
         )
-        assertNull(cache.get("x"))
+        val entry = cache.getEntry("bob")
+        assertEquals(5_000_000L, entry!!.savedAtMs)
+        assertEquals("bob", entry.report.username)
     }
 }
+
