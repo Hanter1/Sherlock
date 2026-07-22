@@ -71,7 +71,10 @@ class CatalogRepository(
     }
 
     fun updateFromUrl(url: String): UpdateResult {
-        CatalogLimits.validateRemoteUrl(url)?.let { return UpdateResult.Failed(it) }
+        CatalogLimits.validateRemoteUrl(
+            url = url,
+            allowAnyHttpsHost = settings.catalogAllowAnyHost,
+        )?.let { return UpdateResult.Failed(it) }
         return try {
             val request = Request.Builder()
                 .url(url)

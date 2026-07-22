@@ -1,11 +1,14 @@
 package com.sherlock.bot.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 /**
  * DNS-over-HTTPS client (Cloudflare → Google).
@@ -63,10 +66,12 @@ class MxLookup(
     }
 
     /** Domain SPF (TXT with v=spf1) + DMARC (_dmarc.domain). */
-    suspend fun lookupMailPolicy(domain: String): MailPolicy {
-        val spfTxt = lookupTxt(domain)
-        val dmarcTxt = lookupTxt("_dmarc.$domain")
-        return MailPolicy(
+    suspend fun lookupMailPolicy(domain: String): MailPolicy = coroutineScope {
+        val spfDeferred = async { lookupTxt(domain) }
+        val dmarcDeferred = async { lookupTxt("_dmarc.$domain") }
+        val spfTxt = spfDeferred.await()
+        val dmarcTxt = dmarcDeferred.await()
+        MailPolicy(
             spf = extractSpf(spfTxt),
             dmarc = extractDmarc(dmarcTxt),
             provider = listOf(
@@ -76,7 +81,7 @@ class MxLookup(
         )
     }
 
-    private fun lookupMxOnce(endpoint: DohEndpoint, domain: String): Result {
+    private suspend fun lookupMxOnce(endpoint: DohEndpoint, domain: String): Result {
         return try {
             val body = fetchDnsJson(endpoint, domain, "MX")
                 ?: return Result.Failed("empty body")
@@ -85,11 +90,12 @@ class MxLookup(
                 is Result.Failed -> parsed
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Result.Failed(e.message ?: "network error")
         }
     }
 
-    private fun lookupTxtOnce(endpoint: DohEndpoint, name: String): TxtResult {
+    private suspend fun lookupTxtOnce(endpoint: DohEndpoint, name: String): TxtResult {
         return try {
             val body = fetchDnsJson(endpoint, name, "TXT")
                 ?: return TxtResult.Failed("empty body")
@@ -98,11 +104,12 @@ class MxLookup(
                 is TxtResult.Failed -> parsed
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             TxtResult.Failed(e.message ?: "network error")
         }
     }
 
-    private fun fetchDnsJson(endpoint: DohEndpoint, name: String, type: String): String? {
+    private suspend fun fetchDnsJson(endpoint: DohEndpoint, name: String, type: String): String? {
         val url = endpoint.baseUrl.toHttpUrl().newBuilder()
             .setQueryParameter("name", name)
             .setQueryParameter("type", type)
@@ -114,11 +121,19 @@ class MxLookup(
             .header("Accept-Language", HttpHeaders.ACCEPT_LANGUAGE)
             .get()
             .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IllegalStateException("HTTP ${response.code}")
+        val call = client.newCall(request)
+        val handle = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion {
+            call.cancel()
+        }
+        try {
+            call.execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("HTTP ${response.code}")
+                }
+                return response.body?.string()
             }
-            return response.body?.string()
+        } finally {
+            handle?.dispose()
         }
     }
 

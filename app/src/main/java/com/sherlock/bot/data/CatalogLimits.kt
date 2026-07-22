@@ -1,5 +1,7 @@
 package com.sherlock.bot.data
 
+import java.net.URI
+
 /**
  * Safety bounds for remote / parsed OSINT catalogs.
  */
@@ -11,13 +13,36 @@ object CatalogLimits {
     const val MAX_MARKERS_PER_LIST = 32
     const val MAX_NAME_LEN = 64
 
-    fun validateRemoteUrl(url: String): String? {
+    /** Hosts allowed for remote catalog download (exact or subdomain). */
+    val ALLOWED_HOST_SUFFIXES: List<String> = listOf(
+        "githubusercontent.com",
+        "github.com",
+        "gitlab.com",
+        "codeberg.org",
+        "jsdelivr.net",
+        "githack.com",
+    )
+
+    fun validateRemoteUrl(url: String, allowAnyHttpsHost: Boolean = false): String? {
         val trimmed = url.trim()
         if (trimmed.isBlank()) return "пустой URL"
         if (!trimmed.startsWith("https://", ignoreCase = true)) {
             return "нужен HTTPS URL"
         }
+        val host = runCatching { URI(trimmed).host?.lowercase() }.getOrNull()
+            ?: return "некорректный URL"
+        if (host.isBlank()) return "некорректный URL"
+        if (!allowAnyHttpsHost && !isAllowedHost(host)) {
+            return "хост не в allowlist ($host)"
+        }
         return null
+    }
+
+    fun isAllowedHost(host: String): Boolean {
+        val h = host.lowercase()
+        return ALLOWED_HOST_SUFFIXES.any { suffix ->
+            h == suffix || h.endsWith(".$suffix")
+        }
     }
 
     fun validateParsed(parsed: OsintCatalogParser.ParsedCatalog): String? {

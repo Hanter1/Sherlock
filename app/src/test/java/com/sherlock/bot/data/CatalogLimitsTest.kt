@@ -1,7 +1,6 @@
 package com.sherlock.bot.data
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,7 +10,27 @@ class CatalogLimitsTest {
     @Test
     fun rejectsNonHttpsUrl() {
         assertEquals("нужен HTTPS URL", CatalogLimits.validateRemoteUrl("http://example.com/c.json"))
-        assertNull(CatalogLimits.validateRemoteUrl("https://example.com/c.json"))
+    }
+
+    @Test
+    fun acceptsGithubRawAllowlist() {
+        assertNull(CatalogLimits.validateRemoteUrl("https://raw.githubusercontent.com/org/repo/main/c.json"))
+    }
+
+    @Test
+    fun rejectsHostOutsideAllowlist() {
+        val err = CatalogLimits.validateRemoteUrl("https://evil.example/osint_sites.json")
+        assertTrue(err!!.contains("allowlist"))
+    }
+
+    @Test
+    fun allowAnyHttpsBypassesAllowlist() {
+        assertNull(
+            CatalogLimits.validateRemoteUrl(
+                "https://evil.example/osint_sites.json",
+                allowAnyHttpsHost = true,
+            ),
+        )
     }
 
     @Test

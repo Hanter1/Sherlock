@@ -34,6 +34,7 @@ class OsintEngine(
     private val sessionCache: UsernameSessionCache = UsernameSessionCache(),
     private val diskCache: UsernameDiskCache? = null,
     private val includeBotProtected: () -> Boolean = { true },
+    private val scanPreset: () -> ScanPreset = { ScanPreset.ALL },
     private val emailLookupMx: () -> Boolean = { true },
     private val emailLookupGravatar: () -> Boolean = { true },
 ) {
@@ -73,6 +74,7 @@ class OsintEngine(
         val sites = ScanSiteFilter.filter(
             sites = OsintCatalog.usernameSites,
             includeBotProtected = includeBotProtected(),
+            preset = scanPreset(),
         ).let { list ->
             if (onlySites.isNullOrEmpty()) list
             else list.filter { it.name in onlySites }
@@ -185,12 +187,12 @@ class OsintEngine(
 
     fun analyzePhone(raw: String): OsintResult.InfoReport = PhoneAnalyzer.analyze(raw)
 
-    suspend fun analyzeEmail(raw: String): OsintResult.InfoReport {
-        val parsed = EmailAnalyzer.parse(raw) ?: return EmailAnalyzer.invalidReport()
+    suspend fun analyzeEmail(raw: String): OsintResult.InfoReport = withContext(Dispatchers.IO) {
+        val parsed = EmailAnalyzer.parse(raw) ?: return@withContext EmailAnalyzer.invalidReport()
         val mxOn = emailLookupMx()
         val gravatarOn = emailLookupGravatar()
         if (!mxOn && !gravatarOn) {
-            return EmailAnalyzer.formatReport(
+            return@withContext EmailAnalyzer.formatReport(
                 parsed = parsed,
                 mx = null,
                 gravatar = null,
@@ -199,17 +201,19 @@ class OsintEngine(
                 gravatarEnabled = false,
             )
         }
-        val mx = if (mxOn) mxLookup.lookup(parsed.domain) else null
-        val policy = if (mxOn) mxLookup.lookupMailPolicy(parsed.domain) else null
-        val gravatar = if (gravatarOn) gravatarLookup.lookup(parsed.email) else null
-        return EmailAnalyzer.formatReport(
-            parsed = parsed,
-            mx = mx,
-            gravatar = gravatar,
-            policy = policy,
-            mxEnabled = mxOn,
-            gravatarEnabled = gravatarOn,
-        )
+        coroutineScope {
+            val mxDeferred = if (mxOn) async { mxLookup.lookup(parsed.domain) } else null
+            val policyDeferred = if (mxOn) async { mxLookup.lookupMailPolicy(parsed.domain) } else null
+            val gravatarDeferred = if (gravatarOn) async { gravatarLookup.lookup(parsed.email) } else null
+            EmailAnalyzer.formatReport(
+                parsed = parsed,
+                mx = mxDeferred?.await(),
+                gravatar = gravatarDeferred?.await(),
+                policy = policyDeferred?.await(),
+                mxEnabled = mxOn,
+                gravatarEnabled = gravatarOn,
+            )
+        }
     }
 
     suspend fun compareUsernames(
@@ -220,6 +224,7 @@ class OsintEngine(
         val siteTotal = ScanSiteFilter.filter(
             sites = runCatching { OsintCatalog.usernameSites }.getOrDefault(emptyList()),
             includeBotProtected = includeBotProtected(),
+            preset = scanPreset(),
         ).size.coerceAtLeast(1)
         val total = siteTotal * 2
 

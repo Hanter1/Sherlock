@@ -95,6 +95,23 @@ class AppSettings(context: Context) {
             prefs.edit().putBoolean(KEY_PERSIST_HISTORY, value).apply()
         }
 
+    /** Username scan category preset. */
+    var scanPreset: ScanPreset
+        get() = ScanPreset.fromId(prefs.getString(KEY_SCAN_PRESET, ScanPreset.ALL.id))
+        set(value) {
+            prefs.edit().putString(KEY_SCAN_PRESET, value.id).apply()
+        }
+
+    /**
+     * Developer override: allow remote catalog from any HTTPS host
+     * (default — only GitHub/GitLab/Codeberg/jsDelivr allowlist).
+     */
+    var catalogAllowAnyHost: Boolean
+        get() = prefs.getBoolean(KEY_CATALOG_ANY_HOST, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_CATALOG_ANY_HOST, value).apply()
+        }
+
     fun cycleParallel(): Int {
         val next = when (maxParallel) {
             3 -> 6
@@ -119,6 +136,8 @@ class AppSettings(context: Context) {
         private const val KEY_CATALOG_URL = "catalog_url"
         private const val KEY_PENDING_MODE = "pending_mode"
         private const val KEY_PERSIST_HISTORY = "persist_history"
+        private const val KEY_SCAN_PRESET = "scan_preset"
+        private const val KEY_CATALOG_ANY_HOST = "catalog_allow_any_host"
         const val DEFAULT_PARALLEL = 6
         val ALLOWED_PARALLEL = setOf(3, 6, 10)
         /** Empty = only bundled asset until user sets a URL. */

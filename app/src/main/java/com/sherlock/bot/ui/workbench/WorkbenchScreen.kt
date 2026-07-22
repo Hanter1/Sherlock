@@ -84,6 +84,7 @@ import com.sherlock.bot.data.AppSettings
 import com.sherlock.bot.data.BotAction
 import com.sherlock.bot.data.ChatMessage
 import com.sherlock.bot.data.ChatSearch
+import com.sherlock.bot.data.ScanPreset
 import com.sherlock.bot.data.SearchMode
 import com.sherlock.bot.ui.chat.ChatMarkdown
 import com.sherlock.bot.ui.theme.Cabinet
@@ -1003,6 +1004,7 @@ private fun CabinetDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SettingsDialog(
     state: WorkbenchUiState,
@@ -1036,6 +1038,23 @@ private fun SettingsDialog(
                                 .border(1.dp, Cabinet.Line, RoundedCornerShape(6.dp))
                                 .clickable { viewModel.setMaxParallel(value) }
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                Text("Пресет площадок", color = Cabinet.TextSecondary)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ScanPreset.entries.forEach { preset ->
+                        val selected = preset == state.scanPreset
+                        Text(
+                            text = preset.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (selected) Cabinet.AccentOn else Cabinet.Text,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (selected) Cabinet.Accent else Cabinet.BgElevated)
+                                .border(1.dp, Cabinet.Line, RoundedCornerShape(6.dp))
+                                .clickable { viewModel.setScanPreset(preset) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                         )
                     }
                 }
@@ -1088,6 +1107,11 @@ private fun SettingsDialog(
                     MiniBtn("Обновить", viewModel::updateRemoteCatalog)
                     MiniBtn("Asset", viewModel::resetCatalogToAsset)
                 }
+                SettingsSwitch(
+                    label = "Каталог: любой HTTPS-хост",
+                    checked = state.catalogAllowAnyHost,
+                    onCheckedChange = viewModel::setCatalogAllowAnyHost,
+                )
                 Text("Кэш ников: ${state.usernameCacheEntries}", color = Cabinet.TextMuted)
                 MiniBtn("Очистить кэш", viewModel::clearUsernameCache)
             }

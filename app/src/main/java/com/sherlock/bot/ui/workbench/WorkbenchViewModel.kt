@@ -23,6 +23,7 @@ import com.sherlock.bot.data.OsintEngine
 import com.sherlock.bot.data.OsintResult
 import com.sherlock.bot.data.PiiRedactor
 import com.sherlock.bot.data.ReportExporter
+import com.sherlock.bot.data.ScanPreset
 import com.sherlock.bot.data.SearchMode
 import com.sherlock.bot.data.SiteCheckProgress
 import com.sherlock.bot.data.UsernameDiskCache
@@ -78,9 +79,11 @@ data class WorkbenchUiState(
     val scanProgress: ScanProgressUi? = null,
     val maxParallel: Int = AppSettings.DEFAULT_PARALLEL,
     val includeBotProtected: Boolean = true,
+    val scanPreset: ScanPreset = ScanPreset.ALL,
     val emailLookupMx: Boolean = true,
     val emailLookupGravatar: Boolean = true,
     val redactPiiOnShare: Boolean = false,
+    val catalogAllowAnyHost: Boolean = false,
     val hideInRecents: Boolean = true,
     val persistHistory: Boolean = true,
     val usernameCacheEntries: Int = 0,
@@ -118,6 +121,7 @@ class WorkbenchViewModel(
         diskCache = diskCache,
         maxParallel = { appSettings.maxParallel },
         includeBotProtected = { appSettings.includeBotProtected },
+        scanPreset = { appSettings.scanPreset },
         emailLookupMx = { appSettings.emailLookupMx },
         emailLookupGravatar = { appSettings.emailLookupGravatar },
     ),
@@ -133,9 +137,11 @@ class WorkbenchViewModel(
             isOnline = networkMonitor.isOnline(),
             maxParallel = appSettings.maxParallel,
             includeBotProtected = appSettings.includeBotProtected,
+            scanPreset = appSettings.scanPreset,
             emailLookupMx = appSettings.emailLookupMx,
             emailLookupGravatar = appSettings.emailLookupGravatar,
             redactPiiOnShare = appSettings.redactPiiOnShare,
+            catalogAllowAnyHost = appSettings.catalogAllowAnyHost,
             hideInRecents = appSettings.hideInRecents,
             persistHistory = appSettings.persistHistory,
             usernameCacheEntries = bot.usernameCacheSize(),
@@ -437,6 +443,16 @@ class WorkbenchViewModel(
     fun setIncludeBotProtected(value: Boolean) {
         appSettings.includeBotProtected = value
         _state.update { it.copy(includeBotProtected = value) }
+    }
+
+    fun setScanPreset(value: ScanPreset) {
+        appSettings.scanPreset = value
+        _state.update { it.copy(scanPreset = value) }
+    }
+
+    fun setCatalogAllowAnyHost(value: Boolean) {
+        appSettings.catalogAllowAnyHost = value
+        _state.update { it.copy(catalogAllowAnyHost = value) }
     }
 
     fun setEmailLookupMx(value: Boolean) {
@@ -872,9 +888,11 @@ class WorkbenchViewModel(
             it.copy(
                 maxParallel = appSettings.maxParallel,
                 includeBotProtected = appSettings.includeBotProtected,
+                scanPreset = appSettings.scanPreset,
                 emailLookupMx = appSettings.emailLookupMx,
                 emailLookupGravatar = appSettings.emailLookupGravatar,
                 redactPiiOnShare = appSettings.redactPiiOnShare,
+                catalogAllowAnyHost = appSettings.catalogAllowAnyHost,
                 hideInRecents = appSettings.hideInRecents,
                 persistHistory = appSettings.persistHistory,
                 usernameCacheEntries = bot.usernameCacheSize(),

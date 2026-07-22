@@ -1,11 +1,13 @@
 package com.sherlock.bot.data
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 /**
  * Public Gravatar lookup by email MD5 (no account data beyond avatar presence).
@@ -29,36 +31,39 @@ class GravatarLookup(
         val avatarUrl = "https://www.gravatar.com/avatar/$hash?d=404&s=128"
         val profileUrl = "https://www.gravatar.com/$hash"
         try {
-            val request = Request.Builder()
-                .url(avatarUrl)
-                .head()
-                .header("User-Agent", HttpHeaders.USER_AGENT)
-                .header("Accept-Language", HttpHeaders.ACCEPT_LANGUAGE)
-                .build()
-            client.newCall(request).execute().use { response ->
-                when (response.code) {
-                    200 -> Result.Found(hash, avatarUrl.replace("?d=404&s=128", "?s=128"), profileUrl)
-                    404 -> Result.Missing(hash)
-                    else -> {
-                        // Some CDNs reject HEAD — try GET
-                        val getReq = Request.Builder()
-                            .url(avatarUrl)
-                            .get()
-                            .header("User-Agent", HttpHeaders.USER_AGENT)
-                            .header("Accept-Language", HttpHeaders.ACCEPT_LANGUAGE)
-                            .build()
-                        client.newCall(getReq).execute().use { getResponse ->
-                            when (getResponse.code) {
-                                200 -> Result.Found(hash, avatarUrl.replace("?d=404&s=128", "?s=128"), profileUrl)
-                                404 -> Result.Missing(hash)
-                                else -> Result.Failed(hash, "HTTP ${getResponse.code}")
-                            }
-                        }
+            when (val code = probe(avatarUrl, head = true)) {
+                200 -> Result.Found(hash, avatarUrl.replace("?d=404&s=128", "?s=128"), profileUrl)
+                404 -> Result.Missing(hash)
+                else -> {
+                    when (val getCode = probe(avatarUrl, head = false)) {
+                        200 -> Result.Found(hash, avatarUrl.replace("?d=404&s=128", "?s=128"), profileUrl)
+                        404 -> Result.Missing(hash)
+                        else -> Result.Failed(hash, "HTTP $getCode")
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.Failed(hash, e.message ?: "network error")
+        }
+    }
+
+    private suspend fun probe(url: String, head: Boolean): Int {
+        val request = Request.Builder()
+            .url(url)
+            .method(if (head) "HEAD" else "GET", null)
+            .header("User-Agent", HttpHeaders.USER_AGENT)
+            .header("Accept-Language", HttpHeaders.ACCEPT_LANGUAGE)
+            .build()
+        val call = client.newCall(request)
+        val handle = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion {
+            call.cancel()
+        }
+        try {
+            call.execute().use { return it.code }
+        } finally {
+            handle?.dispose()
         }
     }
 
