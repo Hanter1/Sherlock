@@ -15,7 +15,7 @@ Android OSINT-кабинет по открытым источникам.
 
 ## Docs
 
-- [Wiki](https://github.com/Hanter1/Sherlock/wiki)
+- [Documentation](https://github.com/Hanter1/Sherlock/blob/main/docs/wiki/Home.md)
 - [README](https://github.com/Hanter1/Sherlock#readme)
 
 ## Note

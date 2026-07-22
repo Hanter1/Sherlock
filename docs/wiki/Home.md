@@ -8,11 +8,11 @@ Android OSINT-кабинет: проверка ника, телефона, email
 
 | Страница | О чём |
 |----------|--------|
-| [Installation](Installation) | APK, требования, разрешения |
-| [Usage](Usage) | Режимы, команды, отчёты, фильтры |
-| [Catalog](Catalog) | Площадки, remote-каталог, подпись |
-| [Privacy and Ethics](Privacy-and-Ethics) | Границы, ПДн, дисклеймер |
-| [Building](Building) | JDK, SDK, debug / release |
+| [Installation](Installation.md) | APK, требования, разрешения |
+| [Usage](Usage.md) | Режимы, команды, отчёты, фильтры |
+| [Catalog](Catalog.md) | Площадки, remote-каталог, подпись |
+| [Privacy and Ethics](Privacy-and-Ethics.md) | Границы, ПДн, дисклеймер |
+| [Building](Building.md) | JDK, SDK, debug / release |
 
 ## Ссылки
 

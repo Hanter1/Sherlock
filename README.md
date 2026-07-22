@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/Hanter1/Sherlock/releases/latest">Скачать APK</a>
   ·
-  <a href="https://github.com/Hanter1/Sherlock/wiki">Wiki</a>
+  <a href="docs/wiki/Home.md">Документация</a>
   ·
   <a href="#сборка">Сборка</a>
 </p>
@@ -44,7 +44,7 @@ Sherlock Bot — тёмный console-UI для быстрых проверок 
 | **Надёжность** | Per-host rate limit, retry 429/5xx, HTTP-диагностика, уведомление о конце скана |
 | **Каталог** | `osint_sites.json` + remote HTTPS (allowlist, sha256, опционально ECDSA) |
 
-Полный список — в [Wiki → Usage](https://github.com/Hanter1/Sherlock/wiki/Usage).
+Полный список — в [Usage](docs/wiki/Usage.md).
 
 ## Быстрый старт
 
@@ -73,20 +73,21 @@ APK: `app\build\outputs\apk\debug\app-debug.apk`
 
 Release (R8 + minify): скопируйте `keystore.properties.example` → `keystore.properties`, укажите `.jks`, затем `gradlew.bat assembleRelease`.
 
-Подробнее: [Wiki → Building](https://github.com/Hanter1/Sherlock/wiki/Building).
+Подробнее: [Building](docs/wiki/Building.md).
 
 CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — unit-тесты, `lintDebug`, debug APK.  
 Каталог (недельный probe): [`scripts/probe_catalog.py`](scripts/probe_catalog.py).
 
 ## Документация
 
-- [Installation](https://github.com/Hanter1/Sherlock/wiki/Installation)
-- [Usage](https://github.com/Hanter1/Sherlock/wiki/Usage)
-- [Catalog](https://github.com/Hanter1/Sherlock/wiki/Catalog)
-- [Privacy & Ethics](https://github.com/Hanter1/Sherlock/wiki/Privacy-and-Ethics)
-- [Building](https://github.com/Hanter1/Sherlock/wiki/Building)
+- [Home](docs/wiki/Home.md)
+- [Installation](docs/wiki/Installation.md)
+- [Usage](docs/wiki/Usage.md)
+- [Catalog](docs/wiki/Catalog.md)
+- [Privacy & Ethics](docs/wiki/Privacy-and-Ethics.md)
+- [Building](docs/wiki/Building.md)
 
-Зеркало Wiki в репозитории: [`docs/wiki/`](docs/wiki/).
+GitHub Wiki: после [создания первой страницы](https://github.com/Hanter1/Sherlock/wiki) синхронизация — `scripts/publish_wiki.ps1`.
 
 ## Важно
 
