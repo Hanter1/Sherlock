@@ -72,6 +72,19 @@ class OsintEngineClassifyTest {
     }
 
     @Test
+    fun telegramFooterOnExistingProfileStillFound() {
+        // Real t.me pages include install/footer copy even when the user exists.
+        val site = OsintCatalog.usernameSites.first { it.name == "Telegram" }
+        val body = """
+            <div class="tgme_page_title">Pavel Durov</div>
+            <div class="tgme_page_photo"></div>
+            <div>If you have <strong>Telegram</strong>, you can contact <a>@durov</a></div>
+        """.trimIndent()
+        val result = engine.classify(site, "https://t.me/durov", 200, body)
+        assertTrue(result is OsintEngine.CheckOutcome.Found)
+    }
+
+    @Test
     fun okMarkersRequiredAvoidFalsePositive() {
         val site = OsintCatalog.usernameSites.first { it.name == "Steam" }
         val result = engine.classify(site, "https://steamcommunity.com/id/x", 200, "<html>empty</html>")

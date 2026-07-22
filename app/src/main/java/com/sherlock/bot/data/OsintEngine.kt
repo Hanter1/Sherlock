@@ -587,14 +587,21 @@ class OsintEngine(
                 diagnostics = baseDiag.withDetail("blocked / challenge"),
             )
         }
+
+        // Prefer profile ok-markers over error markers: sites like Telegram put the same
+        // install/footer copy on both existing and missing pages.
+        val hasOk = site.okBodyMarkers.isNotEmpty() &&
+            site.okBodyMarkers.any { marker -> text.contains(marker, ignoreCase = true) }
+        if (hasOk) {
+            return CheckOutcome.Found(site.name, url, baseDiag)
+        }
+
         if (site.errorBodyMarkers.any { marker -> text.contains(marker, ignoreCase = true) }) {
             return CheckOutcome.Missing(site.name)
         }
 
         if (site.okBodyMarkers.isNotEmpty()) {
-            return if (site.okBodyMarkers.any { marker -> text.contains(marker, ignoreCase = true) }) {
-                CheckOutcome.Found(site.name, url, baseDiag)
-            } else if (code in 200..299) {
+            return if (code in 200..299) {
                 // Antibot shells often return 200 without a real profile — don't show a fake "FOUND" link.
                 if (site.name in ANTIBOT_PROFILE_SITES) {
                     CheckOutcome.Error(

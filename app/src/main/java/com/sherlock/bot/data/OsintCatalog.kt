@@ -223,7 +223,7 @@ object OsintCatalog {
           "urlTemplate": "https://t.me/{user}",
           "okCodes": [200],
           "errorCodes": [],
-          "errorBodyMarkers": ["If you have <strong>Telegram", "tgme_icon_user"],
+          "errorBodyMarkers": ["tgme_icon_user"],
           "okBodyMarkers": ["tgme_page_title", "tgme_page_photo"],
           "useHead": false,
           "errorType": "legacy",
