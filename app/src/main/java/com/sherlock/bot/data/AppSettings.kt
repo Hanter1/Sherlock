@@ -25,6 +25,34 @@ class AppSettings(context: Context) {
             prefs.edit().putBoolean(KEY_BOT_PROTECTED, value).apply()
         }
 
+    /** User accepted third-party email lookups (DoH / Gravatar). */
+    var emailLookupConsent: Boolean
+        get() = prefs.getBoolean(KEY_EMAIL_CONSENT, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_EMAIL_CONSENT, value).apply()
+        }
+
+    /** MX + SPF/DMARC via DNS-over-HTTPS (Cloudflare / Google). */
+    var emailLookupMx: Boolean
+        get() = prefs.getBoolean(KEY_EMAIL_MX, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_EMAIL_MX, value).apply()
+        }
+
+    /** Gravatar avatar check (sends MD5 of email). */
+    var emailLookupGravatar: Boolean
+        get() = prefs.getBoolean(KEY_EMAIL_GRAVATAR, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_EMAIL_GRAVATAR, value).apply()
+        }
+
+    /** When sharing/copying, strip phones and emails from the text. */
+    var redactPiiOnShare: Boolean
+        get() = prefs.getBoolean(KEY_REDACT_SHARE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_REDACT_SHARE, value).apply()
+        }
+
     var disclaimerAccepted: Boolean
         get() = prefs.getBoolean(KEY_DISCLAIMER, false)
         set(value) {
@@ -81,6 +109,10 @@ class AppSettings(context: Context) {
         private const val PREFS = "sherlock_settings"
         private const val KEY_PARALLEL = "max_parallel"
         private const val KEY_BOT_PROTECTED = "include_bot_protected"
+        private const val KEY_EMAIL_CONSENT = "email_lookup_consent"
+        private const val KEY_EMAIL_MX = "email_lookup_mx"
+        private const val KEY_EMAIL_GRAVATAR = "email_lookup_gravatar"
+        private const val KEY_REDACT_SHARE = "redact_pii_on_share"
         private const val KEY_DISCLAIMER = "disclaimer_accepted"
         private const val KEY_HIDE_RECENTS = "hide_in_recents"
         private const val KEY_PINNED_ID = "pinned_message_id"
@@ -101,6 +133,15 @@ Sherlock Bot — OSINT-помощник с упором на Беларусь и
 • обхода защиты сайтов и чужих аккаунтов
 
 Продолжая, вы подтверждаете законное и этичное использование.
+        """.trimIndent()
+
+        val EMAIL_CONSENT_TEXT = """
+Поиск по email отправляет данные третьим сторонам:
+
+• DNS-over-HTTPS — домен адреса в Cloudflare и/или Google (MX, SPF, DMARC)
+• Gravatar — MD5 нормализованного email (проверка публичного аватара)
+
+MD5 email не является анонимизацией. Можно отключить MX или Gravatar в настройках.
         """.trimIndent()
     }
 }

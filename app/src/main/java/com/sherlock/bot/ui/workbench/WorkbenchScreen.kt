@@ -377,6 +377,54 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
             containerColor = Cabinet.Panel,
         )
     }
+    if (state.showEmailConsent) {
+        AlertDialog(
+            onDismissRequest = viewModel::declineEmailConsent,
+            confirmButton = {
+                TextButton(onClick = viewModel::acceptEmailConsent) {
+                    Text("Разрешить", color = Cabinet.Accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::declineEmailConsent) {
+                    Text("Отмена", color = Cabinet.TextSecondary)
+                }
+            },
+            title = { Text("Email и третьи стороны", color = Cabinet.Text) },
+            text = {
+                Text(
+                    text = AppSettings.EMAIL_CONSENT_TEXT,
+                    color = Cabinet.TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            containerColor = Cabinet.Panel,
+        )
+    }
+    if (state.showSharePiiConfirm) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissSharePiiConfirm,
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmShareWithRedaction) {
+                    Text("С маскированием", color = Cabinet.Accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::confirmShareAsIs) {
+                    Text("Как есть", color = Cabinet.Danger)
+                }
+            },
+            title = { Text("В отчёте есть ПДн", color = Cabinet.Text) },
+            text = {
+                Text(
+                    text = "Найдены телефон и/или email. Можно замаскировать перед передачей во внешнее приложение.",
+                    color = Cabinet.TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            containerColor = Cabinet.Panel,
+        )
+    }
 }
 
 @Composable
@@ -1005,6 +1053,22 @@ private fun SettingsDialog(
                     label = "Сохранять историю на диск",
                     checked = state.persistHistory,
                     onCheckedChange = viewModel::setPersistHistory,
+                )
+                Text("Email-поиск", color = Cabinet.TextSecondary)
+                SettingsSwitch(
+                    label = "MX / SPF / DMARC (DoH)",
+                    checked = state.emailLookupMx,
+                    onCheckedChange = viewModel::setEmailLookupMx,
+                )
+                SettingsSwitch(
+                    label = "Gravatar (MD5 email)",
+                    checked = state.emailLookupGravatar,
+                    onCheckedChange = viewModel::setEmailLookupGravatar,
+                )
+                SettingsSwitch(
+                    label = "Маскировать ПДн при share/copy",
+                    checked = state.redactPiiOnShare,
+                    onCheckedChange = viewModel::setRedactPiiOnShare,
                 )
                 Text(
                     "Remote-каталог (${state.catalogSource} v${state.catalogVersion})",

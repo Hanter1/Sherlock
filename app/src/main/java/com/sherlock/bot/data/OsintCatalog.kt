@@ -19,6 +19,11 @@ data class OsintSite(
     val useHead: Boolean = false,
     /** Optional pause before request (ms) to reduce antibot triggers. */
     val rateLimitMs: Long = 0L,
+    /**
+     * When true and there are no okBodyMarkers, HTTP status alone may confirm FOUND
+     * (typical for HEAD probes where 404 is reliable).
+     */
+    val trustHttpStatus: Boolean = false,
 )
 
 object OsintCatalogParser {
@@ -67,6 +72,7 @@ object OsintCatalogParser {
             useHead = obj.optBoolean("useHead", false),
             rateLimitMs = obj.optLong("rateLimitMs", 0L)
                 .coerceIn(0L, CatalogLimits.MAX_RATE_LIMIT_MS),
+            trustHttpStatus = obj.optBoolean("trustHttpStatus", false),
         )
     }
 

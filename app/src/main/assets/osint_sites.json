@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "updated": "2026-07",
   "sites": [
     {
@@ -11,7 +11,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "GitLab",
@@ -26,6 +27,11 @@
       "useHead": false,
       "categories": [
         "dev"
+      ],
+      "okBodyMarkers": [
+        "data-username",
+        "js-user-profile",
+        "user-calendar"
       ]
     },
     {
@@ -37,7 +43,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Codeberg",
@@ -48,7 +55,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Reddit",
@@ -64,7 +72,12 @@
       "categories": [
         "social"
       ],
-      "rateLimitMs": 400
+      "rateLimitMs": 400,
+      "okBodyMarkers": [
+        "ProfileTrophyShowcase",
+        "user-profile",
+        "\"kind\": \"t2\""
+      ]
     },
     {
       "name": "Telegram",
@@ -117,7 +130,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "DeviantArt",
@@ -133,6 +147,10 @@
       "categories": [
         "media",
         "design"
+      ],
+      "okBodyMarkers": [
+        "user-link",
+        "user-homepage"
       ]
     },
     {
@@ -147,6 +165,10 @@
       "useHead": false,
       "categories": [
         "media"
+      ],
+      "okBodyMarkers": [
+        "profile-header",
+        "UserProfileHeader"
       ]
     },
     {
@@ -216,7 +238,8 @@
       "useHead": true,
       "categories": [
         "social"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Keybase",
@@ -227,7 +250,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Roblox",
@@ -241,6 +265,10 @@
       "useHead": false,
       "categories": [
         "gaming"
+      ],
+      "okBodyMarkers": [
+        "profile-header",
+        "data-profileuserid"
       ]
     },
     {
@@ -284,6 +312,10 @@
       "useHead": false,
       "categories": [
         "media"
+      ],
+      "okBodyMarkers": [
+        "FollowAuthor",
+        "data-testid"
       ]
     },
     {
@@ -295,7 +327,8 @@
       "useHead": true,
       "categories": [
         "media"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Flickr",
@@ -306,7 +339,8 @@
       "useHead": true,
       "categories": [
         "media"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "HackerNoon",
@@ -317,7 +351,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "ProductHunt",
@@ -328,7 +363,8 @@
       "useHead": true,
       "categories": [
         "creator"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Linktree",
@@ -344,6 +380,10 @@
       "categories": [
         "social",
         "creator"
+      ],
+      "okBodyMarkers": [
+        "linktree-logo",
+        "ProfileCard"
       ]
     },
     {
@@ -355,7 +395,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "PyPI",
@@ -366,7 +407,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "DockerHub",
@@ -381,6 +423,10 @@
       "useHead": false,
       "categories": [
         "dev"
+      ],
+      "okBodyMarkers": [
+        "dockerHubHeader",
+        "orgName"
       ]
     },
     {
@@ -429,7 +475,8 @@
       "useHead": true,
       "categories": [
         "gaming"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Chess.com",
@@ -552,7 +599,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Hashnode",
@@ -563,7 +611,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Behance",
@@ -577,6 +626,10 @@
       "useHead": false,
       "categories": [
         "design"
+      ],
+      "okBodyMarkers": [
+        "profile-info",
+        "ProfileInfo"
       ]
     },
     {
@@ -588,7 +641,8 @@
       "useHead": true,
       "categories": [
         "design"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Replit",
@@ -599,7 +653,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "Kaggle",
@@ -610,7 +665,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "HuggingFace",
@@ -621,7 +677,8 @@
       "useHead": true,
       "categories": [
         "dev"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "BuyMeACoffee",
@@ -632,7 +689,8 @@
       "useHead": true,
       "categories": [
         "creator"
-      ]
+      ],
+      "trustHttpStatus": true
     },
     {
       "name": "OK.ru",
@@ -648,7 +706,11 @@
         "social"
       ],
       "useHead": false,
-      "rateLimitMs": 250
+      "rateLimitMs": 250,
+      "okBodyMarkers": [
+        "profile-user",
+        "hookBlock"
+      ]
     }
   ]
 }

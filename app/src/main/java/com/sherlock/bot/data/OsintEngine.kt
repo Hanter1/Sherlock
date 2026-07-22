@@ -34,6 +34,8 @@ class OsintEngine(
     private val sessionCache: UsernameSessionCache = UsernameSessionCache(),
     private val diskCache: UsernameDiskCache? = null,
     private val includeBotProtected: () -> Boolean = { true },
+    private val emailLookupMx: () -> Boolean = { true },
+    private val emailLookupGravatar: () -> Boolean = { true },
 ) {
     private val usernamePattern = Pattern.compile("^[A-Za-z0-9._-]{2,32}$")
 
@@ -185,10 +187,29 @@ class OsintEngine(
 
     suspend fun analyzeEmail(raw: String): OsintResult.InfoReport {
         val parsed = EmailAnalyzer.parse(raw) ?: return EmailAnalyzer.invalidReport()
-        val mx = mxLookup.lookup(parsed.domain)
-        val policy = mxLookup.lookupMailPolicy(parsed.domain)
-        val gravatar = gravatarLookup.lookup(parsed.email)
-        return EmailAnalyzer.formatReport(parsed, mx, gravatar, policy)
+        val mxOn = emailLookupMx()
+        val gravatarOn = emailLookupGravatar()
+        if (!mxOn && !gravatarOn) {
+            return EmailAnalyzer.formatReport(
+                parsed = parsed,
+                mx = null,
+                gravatar = null,
+                policy = null,
+                mxEnabled = false,
+                gravatarEnabled = false,
+            )
+        }
+        val mx = if (mxOn) mxLookup.lookup(parsed.domain) else null
+        val policy = if (mxOn) mxLookup.lookupMailPolicy(parsed.domain) else null
+        val gravatar = if (gravatarOn) gravatarLookup.lookup(parsed.email) else null
+        return EmailAnalyzer.formatReport(
+            parsed = parsed,
+            mx = mx,
+            gravatar = gravatar,
+            policy = policy,
+            mxEnabled = mxOn,
+            gravatarEnabled = gravatarOn,
+        )
     }
 
     suspend fun compareUsernames(
@@ -298,7 +319,16 @@ class OsintEngine(
             }
         }
 
-        // Without profile markers, HTTP 2xx is not enough for a confirmed FOUND.
+        if (site.trustHttpStatus) {
+            return when {
+                code in site.okCodes -> CheckOutcome.Found(site.name, url)
+                code in 200..299 -> CheckOutcome.Found(site.name, url)
+                code == 404 -> CheckOutcome.Missing(site.name)
+                else -> CheckOutcome.Error(site.name, "HTTP $code")
+            }
+        }
+
+        // Without profile markers / trusted status codes, HTTP 2xx is not a confirmed FOUND.
         return when {
             code in site.okCodes || code in 200..299 -> CheckOutcome.Uncertain(
                 site = site.name,

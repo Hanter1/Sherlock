@@ -28,49 +28,62 @@ object EmailAnalyzer {
 
     fun formatReport(
         parsed: Parsed,
-        mx: MxLookup.Result,
-        gravatar: GravatarLookup.Result,
+        mx: MxLookup.Result?,
+        gravatar: GravatarLookup.Result?,
         policy: MxLookup.MailPolicy? = null,
+        mxEnabled: Boolean = true,
+        gravatarEnabled: Boolean = true,
     ): OsintResult.InfoReport {
         val body = buildString {
             appendLine("Адрес: `${parsed.email}`")
             appendLine("Локальная часть: ${parsed.local} (${parsed.local.length} симв.)")
             appendLine("Домен: ${parsed.domain}")
             appendLine()
-            appendLine("MX (DNS-over-HTTPS · Cloudflare → Google):")
-            when (mx) {
-                is MxLookup.Result.Ok -> {
-                    if (mx.provider.isNotBlank()) {
-                        appendLine("• источник: ${mx.provider}")
-                    }
-                    if (mx.records.isEmpty()) {
-                        appendLine("• записей MX нет — почта на домене, скорее всего, не принимается")
-                    } else {
-                        mx.records.forEach { rec ->
-                            appendLine("• [${rec.priority}] ${rec.host}")
+            if (!mxEnabled) {
+                appendLine("MX / SPF / DMARC: выключено в настройках")
+                appendLine()
+            } else {
+                appendLine("MX (DNS-over-HTTPS · Cloudflare → Google):")
+                when (mx) {
+                    null -> appendLine("• не запрашивалось")
+                    is MxLookup.Result.Ok -> {
+                        if (mx.provider.isNotBlank()) {
+                            appendLine("• источник: ${mx.provider}")
+                        }
+                        if (mx.records.isEmpty()) {
+                            appendLine("• записей MX нет — почта на домене, скорее всего, не принимается")
+                        } else {
+                            mx.records.forEach { rec ->
+                                appendLine("• [${rec.priority}] ${rec.host}")
+                            }
                         }
                     }
+                    is MxLookup.Result.Failed -> {
+                        appendLine("• не удалось запросить: ${mx.reason}")
+                    }
                 }
-                is MxLookup.Result.Failed -> {
-                    appendLine("• не удалось запросить: ${mx.reason}")
-                }
+                appendLine()
+                appendLine("SPF / DMARC (TXT):")
+                appendPolicy(policy)
+                appendLine()
             }
-            appendLine()
-            appendLine("SPF / DMARC (TXT):")
-            appendPolicy(policy)
-            appendLine()
-            appendLine("Gravatar (публичный аватар по MD5):")
-            when (gravatar) {
-                is GravatarLookup.Result.Found -> {
-                    appendLine("• профиль найден")
-                    appendLine("• аватар: ${gravatar.avatarUrl}")
-                    appendLine("• страница: ${gravatar.profileUrl}")
-                }
-                is GravatarLookup.Result.Missing -> {
-                    appendLine("• публичного аватара нет (hash `${gravatar.hash.take(8)}…`)")
-                }
-                is GravatarLookup.Result.Failed -> {
-                    appendLine("• не удалось проверить: ${gravatar.reason}")
+            if (!gravatarEnabled) {
+                appendLine("Gravatar: выключено в настройках")
+            } else {
+                appendLine("Gravatar (публичный аватар по MD5):")
+                when (gravatar) {
+                    null -> appendLine("• не запрашивалось")
+                    is GravatarLookup.Result.Found -> {
+                        appendLine("• профиль найден")
+                        appendLine("• аватар: ${gravatar.avatarUrl}")
+                        appendLine("• страница: ${gravatar.profileUrl}")
+                    }
+                    is GravatarLookup.Result.Missing -> {
+                        appendLine("• публичного аватара нет (hash `${gravatar.hash.take(8)}…`)")
+                    }
+                    is GravatarLookup.Result.Failed -> {
+                        appendLine("• не удалось проверить: ${gravatar.reason}")
+                    }
                 }
             }
             appendLine()

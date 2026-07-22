@@ -20,6 +20,8 @@ import com.sherlock.bot.data.ChatSnapshot
 import com.sherlock.bot.data.NetworkMonitor
 import com.sherlock.bot.data.OsintCatalog
 import com.sherlock.bot.data.OsintEngine
+import com.sherlock.bot.data.OsintResult
+import com.sherlock.bot.data.PiiRedactor
 import com.sherlock.bot.data.ReportExporter
 import com.sherlock.bot.data.SearchMode
 import com.sherlock.bot.data.SiteCheckProgress
@@ -27,7 +29,7 @@ import com.sherlock.bot.data.UsernameDiskCache
 import com.sherlock.bot.data.UsernameReportMerge
 import com.sherlock.bot.data.UsernameSessionCache
 import com.sherlock.bot.domain.BotInteractor
-import com.sherlock.bot.data.OsintResult
+import com.sherlock.bot.domain.QueryClassifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -70,10 +72,15 @@ data class WorkbenchUiState(
     val showSettings: Boolean = false,
     val showDisclaimer: Boolean = false,
     val showClearConfirm: Boolean = false,
+    val showEmailConsent: Boolean = false,
+    val showSharePiiConfirm: Boolean = false,
     val celebrateScan: Boolean = false,
     val scanProgress: ScanProgressUi? = null,
     val maxParallel: Int = AppSettings.DEFAULT_PARALLEL,
     val includeBotProtected: Boolean = true,
+    val emailLookupMx: Boolean = true,
+    val emailLookupGravatar: Boolean = true,
+    val redactPiiOnShare: Boolean = false,
     val hideInRecents: Boolean = true,
     val persistHistory: Boolean = true,
     val usernameCacheEntries: Int = 0,
@@ -111,6 +118,8 @@ class WorkbenchViewModel(
         diskCache = diskCache,
         maxParallel = { appSettings.maxParallel },
         includeBotProtected = { appSettings.includeBotProtected },
+        emailLookupMx = { appSettings.emailLookupMx },
+        emailLookupGravatar = { appSettings.emailLookupGravatar },
     ),
     private val bot: BotInteractor = BotInteractor(
         osint = osint,
@@ -124,6 +133,9 @@ class WorkbenchViewModel(
             isOnline = networkMonitor.isOnline(),
             maxParallel = appSettings.maxParallel,
             includeBotProtected = appSettings.includeBotProtected,
+            emailLookupMx = appSettings.emailLookupMx,
+            emailLookupGravatar = appSettings.emailLookupGravatar,
+            redactPiiOnShare = appSettings.redactPiiOnShare,
             hideInRecents = appSettings.hideInRecents,
             persistHistory = appSettings.persistHistory,
             usernameCacheEntries = bot.usernameCacheSize(),
@@ -152,6 +164,9 @@ class WorkbenchViewModel(
     private var scanJob: Job? = null
     private val lastProgress = CopyOnWriteArrayList<SiteCheckProgress>()
     private var lastScanUsername: String = ""
+    private var pendingEmailQuery: String? = null
+    private var pendingShareText: String? = null
+    private var pendingShareAsShare: Boolean = true
 
     init {
         viewModelScope.launch {
@@ -248,12 +263,45 @@ class WorkbenchViewModel(
             _state.update { it.copy(isBusy = false) }
             return
         }
+        if (requiresEmailConsent(text)) {
+            pendingEmailQuery = text
+            _state.update { it.copy(isBusy = false, showEmailConsent = true) }
+            return
+        }
         respond(text)
     }
 
     fun acceptDisclaimer() {
         appSettings.disclaimerAccepted = true
         _state.update { it.copy(showDisclaimer = false) }
+    }
+
+    fun acceptEmailConsent() {
+        appSettings.emailLookupConsent = true
+        val query = pendingEmailQuery
+        pendingEmailQuery = null
+        _state.update { it.copy(showEmailConsent = false) }
+        if (query != null) {
+            _state.update { it.copy(isBusy = true) }
+            respond(query)
+        }
+    }
+
+    fun declineEmailConsent() {
+        pendingEmailQuery = null
+        _state.update { it.copy(showEmailConsent = false) }
+        _toastEvents.tryEmit("Email-поиск отменён")
+    }
+
+    private fun requiresEmailConsent(text: String): Boolean {
+        if (appSettings.emailLookupConsent) return false
+        val trimmed = text.trim()
+        if (trimmed.startsWith("/email", ignoreCase = true)) {
+            return trimmed.substringAfter(" ", "").trim().isNotBlank()
+        }
+        val mode = _state.value.pendingMode.takeIf { it != SearchMode.NONE }
+            ?: QueryClassifier.detectMode(trimmed)
+        return mode == SearchMode.EMAIL
     }
 
     fun setHideInRecents(value: Boolean) {
@@ -391,6 +439,21 @@ class WorkbenchViewModel(
         _state.update { it.copy(includeBotProtected = value) }
     }
 
+    fun setEmailLookupMx(value: Boolean) {
+        appSettings.emailLookupMx = value
+        _state.update { it.copy(emailLookupMx = value) }
+    }
+
+    fun setEmailLookupGravatar(value: Boolean) {
+        appSettings.emailLookupGravatar = value
+        _state.update { it.copy(emailLookupGravatar = value) }
+    }
+
+    fun setRedactPiiOnShare(value: Boolean) {
+        appSettings.redactPiiOnShare = value
+        _state.update { it.copy(redactPiiOnShare = value) }
+    }
+
     fun clearUsernameCache() {
         bot.clearUsernameCaches()
         refreshSettingsState()
@@ -409,17 +472,8 @@ class WorkbenchViewModel(
     fun onAction(messageId: String, actionId: String) {
         if (_state.value.isBusy) return
         when (actionId) {
-            "share" -> {
-                val text = _state.value.messages.find { it.id == messageId }?.text ?: return
-                _shareEvents.tryEmit(text)
-            }
-            "copy" -> {
-                val text = _state.value.messages.find { it.id == messageId }?.text ?: return
-                val clipboard = getApplication<Application>()
-                    .getSystemService(ClipboardManager::class.java)
-                clipboard?.setPrimaryClip(ClipData.newPlainText("Sherlock Bot", text))
-                _toastEvents.tryEmit("Скопировано в буфер")
-            }
+            "share" -> emitShareOrCopy(messageId, asShare = true)
+            "copy" -> emitShareOrCopy(messageId, asShare = false)
             "about" -> openAbout()
             "settings" -> openSettings()
             "clear_history" -> requestClearHistory()
@@ -479,6 +533,51 @@ class WorkbenchViewModel(
                     }
                 }
             }
+        }
+    }
+
+    fun dismissSharePiiConfirm() {
+        pendingShareText = null
+        _state.update { it.copy(showSharePiiConfirm = false) }
+    }
+
+    fun confirmShareWithRedaction() {
+        val text = pendingShareText ?: return
+        pendingShareText = null
+        _state.update { it.copy(showSharePiiConfirm = false) }
+        deliverShareOrCopy(PiiRedactor.redact(text), pendingShareAsShare)
+    }
+
+    fun confirmShareAsIs() {
+        val text = pendingShareText ?: return
+        pendingShareText = null
+        _state.update { it.copy(showSharePiiConfirm = false) }
+        deliverShareOrCopy(text, pendingShareAsShare)
+    }
+
+    private fun emitShareOrCopy(messageId: String, asShare: Boolean) {
+        val text = _state.value.messages.find { it.id == messageId }?.text ?: return
+        if (appSettings.redactPiiOnShare) {
+            deliverShareOrCopy(PiiRedactor.redact(text), asShare)
+            return
+        }
+        if (PiiRedactor.containsPii(text)) {
+            pendingShareText = text
+            pendingShareAsShare = asShare
+            _state.update { it.copy(showSharePiiConfirm = true) }
+            return
+        }
+        deliverShareOrCopy(text, asShare)
+    }
+
+    private fun deliverShareOrCopy(text: String, asShare: Boolean) {
+        if (asShare) {
+            _shareEvents.tryEmit(text)
+        } else {
+            val clipboard = getApplication<Application>()
+                .getSystemService(ClipboardManager::class.java)
+            clipboard?.setPrimaryClip(ClipData.newPlainText("Sherlock Bot", text))
+            _toastEvents.tryEmit("Скопировано в буфер")
         }
     }
 
@@ -773,6 +872,9 @@ class WorkbenchViewModel(
             it.copy(
                 maxParallel = appSettings.maxParallel,
                 includeBotProtected = appSettings.includeBotProtected,
+                emailLookupMx = appSettings.emailLookupMx,
+                emailLookupGravatar = appSettings.emailLookupGravatar,
+                redactPiiOnShare = appSettings.redactPiiOnShare,
                 hideInRecents = appSettings.hideInRecents,
                 persistHistory = appSettings.persistHistory,
                 usernameCacheEntries = bot.usernameCacheSize(),

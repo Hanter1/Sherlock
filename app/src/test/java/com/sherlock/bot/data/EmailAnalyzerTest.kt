@@ -63,4 +63,18 @@ class EmailAnalyzerTest {
         )
         assertTrue(report.body.contains("публичного аватара нет"))
     }
+
+    @Test
+    fun formatRespectsDisabledLookups() {
+        val parsed = EmailAnalyzer.parse("a@example.com")!!
+        val report = EmailAnalyzer.formatReport(
+            parsed = parsed,
+            mx = null,
+            gravatar = null,
+            mxEnabled = false,
+            gravatarEnabled = false,
+        )
+        assertTrue(report.body.contains("MX / SPF / DMARC: выключено"))
+        assertTrue(report.body.contains("Gravatar: выключено"))
+    }
 }

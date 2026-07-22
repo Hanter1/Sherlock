@@ -16,14 +16,30 @@ class OsintEngineClassifyTest {
     @Test
     fun withoutOkMarkersHttp200IsUncertainNotFound() {
         val site = OsintSite(
+            name = "Mystery",
+            urlTemplate = "https://example.com/{user}",
+            okCodes = setOf(200),
+            errorCodes = setOf(404),
+            useHead = true,
+        )
+        val result = engine.classify(site, "https://example.com/x", 200, null)
+        assertTrue(result is OsintEngine.CheckOutcome.Uncertain)
+    }
+
+    @Test
+    fun trustedHttpStatusAllowsFoundWithoutMarkers() {
+        val site = OsintSite(
             name = "GitHub",
             urlTemplate = "https://github.com/{user}",
             okCodes = setOf(200),
             errorCodes = setOf(404),
             useHead = true,
+            trustHttpStatus = true,
         )
-        val result = engine.classify(site, "https://github.com/x", 200, null)
-        assertTrue(result is OsintEngine.CheckOutcome.Uncertain)
+        val found = engine.classify(site, "https://github.com/x", 200, null)
+        assertTrue(found is OsintEngine.CheckOutcome.Found)
+        val missing = engine.classify(site, "https://github.com/x", 404, null)
+        assertTrue(missing is OsintEngine.CheckOutcome.Missing)
     }
 
     @Test
