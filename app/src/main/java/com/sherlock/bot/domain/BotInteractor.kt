@@ -48,6 +48,11 @@ class BotInteractor(
         lastUsernameReport = null
     }
 
+    fun removeReports(ids: Collection<String>) {
+        ids.forEach { reportsById.remove(it) }
+        lastUsernameReport = reportsById.values.lastOrNull()
+    }
+
     private fun putReport(reportId: String, report: OsintResult.UsernameReport) {
         val isNew = !reportsById.containsKey(reportId)
         reportsById[reportId] = report

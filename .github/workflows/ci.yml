@@ -29,6 +29,9 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
 
+      - name: Android Lint
+        run: ./gradlew lintDebug --stacktrace
+
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace
 

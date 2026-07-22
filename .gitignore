@@ -19,3 +19,6 @@ keystore.properties
 .kotlin/
 .jdk/
 .probe/
+scripts/catalog-keys/private_pkcs8_b64.txt
+scripts/catalog-keys/*.class
+scripts/catalog-keys/GenCatalogKeys.java

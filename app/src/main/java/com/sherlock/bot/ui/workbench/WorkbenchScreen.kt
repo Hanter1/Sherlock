@@ -84,12 +84,15 @@ import com.sherlock.bot.data.AppSettings
 import com.sherlock.bot.data.BotAction
 import com.sherlock.bot.data.ChatMessage
 import com.sherlock.bot.data.ChatSearch
+import com.sherlock.bot.data.JournalCase
+import com.sherlock.bot.data.JournalCases
 import com.sherlock.bot.data.ScanPreset
 import com.sherlock.bot.data.SearchMode
 import com.sherlock.bot.ui.chat.ChatMarkdown
 import com.sherlock.bot.ui.theme.Cabinet
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 private data class ModeTab(val actionId: String, val label: String, val mode: SearchMode)
 
@@ -136,6 +139,12 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
 
     val journal = remember(state.visibleMessages) {
         state.visibleMessages.filter(ChatSearch::isJournalWorthy)
+    }
+    val journalCases = remember(journal, state.pinnedMessageId) {
+        JournalCases.build(journal, state.pinnedMessageId)
+    }
+    val journalGroups = remember(journalCases) {
+        JournalCases.groupByDay(journalCases)
     }
     val statusText = state.scanProgress?.let { progress ->
         "Скан ${progress.username} · ${progress.shortLabel}"
@@ -226,10 +235,9 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
                 drawerContainerColor = Cabinet.Panel,
             ) {
                 JournalPanel(
-                    entries = journal,
+                    groups = journalGroups,
                     selectedId = activeReport?.id,
                     searchQuery = state.searchQuery,
-                    pinnedId = state.pinnedMessageId,
                     focusFilter = focusJournalFilter,
                     onFilterFocused = { focusJournalFilter = false },
                     onSearch = viewModel::onSearchQueryChange,
@@ -237,6 +245,7 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
                         selectedReportId = resolveJournalSelection(journal, id)
                         scope.launch { drawerState.close() }
                     },
+                    onDelete = viewModel::deleteJournalMessages,
                     onClear = viewModel::requestClearHistory,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -275,20 +284,20 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
                 Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     if (wide && journalOpen) {
                         JournalPanel(
-                            entries = journal,
+                            groups = journalGroups,
                             selectedId = activeReport?.id,
                             searchQuery = state.searchQuery,
-                            pinnedId = state.pinnedMessageId,
                             focusFilter = focusJournalFilter,
                             onFilterFocused = { focusJournalFilter = false },
                             onSearch = viewModel::onSearchQueryChange,
                             onSelect = { selectedReportId = resolveJournalSelection(journal, it) },
+                            onDelete = viewModel::deleteJournalMessages,
                             onClear = viewModel::requestClearHistory,
                             modifier = Modifier
                                 .width(280.dp)
                                 .fillMaxHeight()
-                                .background(Cabinet.BgElevated)
-                                .border(width = 1.dp, color = Cabinet.Line),
+                                .background(Cabinet.Panel)
+                                .border(1.dp, Cabinet.Line),
                         )
                     }
                     WorkbenchMain(
@@ -875,19 +884,20 @@ private fun ActionChip(
 
 @Composable
 private fun JournalPanel(
-    entries: List<ChatMessage>,
+    groups: List<Pair<String, List<JournalCase>>>,
     selectedId: String?,
     searchQuery: String,
-    pinnedId: String?,
     focusFilter: Boolean,
     onFilterFocused: () -> Unit,
     onSearch: (String) -> Unit,
     onSelect: (String) -> Unit,
+    onDelete: (List<String>) -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val filterFocus = remember { FocusRequester() }
+    val caseCount = groups.sumOf { it.second.size }
     LaunchedEffect(focusFilter) {
         if (focusFilter) {
             filterFocus.requestFocus()
@@ -901,7 +911,7 @@ private fun JournalPanel(
         ) {
             Icon(Icons.Default.History, null, tint = Cabinet.Accent, modifier = Modifier.size(18.dp))
             Text(
-                text = if (entries.isEmpty()) "ЖУРНАЛ" else "ЖУРНАЛ · ${entries.size}",
+                text = if (caseCount == 0) "ДЕЛА" else "ДЕЛА · $caseCount",
                 style = MaterialTheme.typography.labelLarge,
                 color = Cabinet.Text,
                 modifier = Modifier.weight(1f),
@@ -926,7 +936,7 @@ private fun JournalPanel(
             colors = fieldColors(),
         )
         Spacer(Modifier.height(10.dp))
-        if (entries.isEmpty()) {
+        if (caseCount == 0) {
             Text(
                 text = "Пока пусто — выполните запрос",
                 style = MaterialTheme.typography.bodyMedium,
@@ -940,45 +950,62 @@ private fun JournalPanel(
             contentPadding = PaddingValues(bottom = 12.dp),
             modifier = Modifier.weight(1f),
         ) {
-            items(entries.asReversed(), key = { it.id }) { msg ->
-                val selected = msg.id == selectedId
-                val pinned = msg.id == pinnedId
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (selected) Cabinet.AccentSoft else Cabinet.Panel)
-                        .border(
-                            1.dp,
-                            if (selected) Cabinet.Accent else Cabinet.Line,
-                            RoundedCornerShape(8.dp),
-                        )
-                        .clickable { onSelect(msg.id) }
-                        .padding(10.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = ChatSearch.journalMeta(msg),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (msg.fromBot) Cabinet.Accent else Cabinet.TextMuted,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (pinned) {
-                            Icon(
-                                Icons.Default.PushPin,
-                                null,
-                                tint = Cabinet.Accent,
-                                modifier = Modifier.size(12.dp),
+            groups.forEach { (day, cases) ->
+                item(key = "day-$day") {
+                    Text(
+                        text = day.uppercase(Locale.getDefault()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Cabinet.TextMuted,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                    )
+                }
+                items(cases, key = { it.id }) { case ->
+                    val selected = case.selectMessageId == selectedId
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) Cabinet.AccentSoft else Cabinet.Panel)
+                            .border(
+                                1.dp,
+                                if (selected) Cabinet.Accent else Cabinet.Line,
+                                RoundedCornerShape(8.dp),
+                            )
+                            .clickable { onSelect(case.selectMessageId) }
+                            .padding(10.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = case.meta,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Cabinet.Accent,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (case.pinned) {
+                                Icon(
+                                    Icons.Default.PushPin,
+                                    null,
+                                    tint = Cabinet.Accent,
+                                    modifier = Modifier.size(12.dp),
+                                )
+                            }
+                            Text(
+                                text = "×",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Cabinet.Danger,
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                                    .clickable { onDelete(case.messageIds) },
                             )
                         }
+                        Text(
+                            text = case.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Cabinet.Text,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    Text(
-                        text = ChatSearch.journalTitle(msg),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Cabinet.Text,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
         }
@@ -1111,6 +1138,11 @@ private fun SettingsDialog(
                     label = "Каталог: любой HTTPS-хост",
                     checked = state.catalogAllowAnyHost,
                     onCheckedChange = viewModel::setCatalogAllowAnyHost,
+                )
+                SettingsSwitch(
+                    label = "Каталог: требовать ECDSA-подпись",
+                    checked = state.catalogRequireSignature,
+                    onCheckedChange = viewModel::setCatalogRequireSignature,
                 )
                 Text(
                     "Кэш ников: ${state.usernameCacheSummary}",

@@ -41,6 +41,7 @@ class CatalogRepository(
             runCatching {
                 val remote = OsintCatalogParser.parseFull(remoteJson)
                 CatalogLimits.validateParsed(remote)?.let { error(it) }
+                verifyCatalogSignature(remote)?.let { error(it) }
                 if (remote.version >= asset.version) {
                     OsintCatalog.load(
                         sites = remote.sites,
@@ -97,6 +98,7 @@ class CatalogRepository(
                 val body = bodyBytes.toString(Charsets.UTF_8)
                 val parsed = OsintCatalogParser.parseFull(body)
                 CatalogLimits.validateParsed(parsed)?.let { return UpdateResult.Failed(it) }
+                verifyCatalogSignature(parsed)?.let { return UpdateResult.Failed(it) }
                 val assetVersion = runCatching {
                     OsintCatalogParser.parseFull(readAsset()).version
                 }.getOrDefault(0)
@@ -133,6 +135,23 @@ class CatalogRepository(
     fun clearRemote() {
         if (remoteFile.exists()) remoteFile.delete()
         loadIntoMemory()
+    }
+
+    /**
+     * @return error message or null if signature policy is satisfied.
+     */
+    internal fun verifyCatalogSignature(parsed: OsintCatalogParser.ParsedCatalog): String? {
+        val require = settings.catalogRequireSignature
+        val signature = parsed.signature.trim()
+        if (signature.isBlank()) {
+            return if (require) "нет ECDSA-подписи (signature)" else null
+        }
+        val payload = CatalogSignature.payloadBytes(parsed.version, parsed.updated, parsed.sites)
+        return if (CatalogSignature.verify(payload, signature)) {
+            null
+        } else {
+            "подпись каталога недействительна"
+        }
     }
 
     private fun readAsset(): String {

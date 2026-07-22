@@ -14,8 +14,8 @@ android {
         applicationId = "com.sherlock.bot"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.12.0"
+        versionCode = 14
+        versionName = "1.13.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -97,4 +97,5 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("org.json:json:20240303")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

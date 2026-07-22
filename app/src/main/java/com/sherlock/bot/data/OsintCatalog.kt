@@ -33,6 +33,7 @@ object OsintCatalogParser {
         val updated: String,
         val sites: List<OsintSite>,
         val expectedSha256: String = "",
+        val signature: String = "",
     )
 
     fun parse(json: String): List<OsintSite> = parseFull(json).sites
@@ -51,6 +52,7 @@ object OsintCatalogParser {
             updated = root.optString("updated", ""),
             sites = sites,
             expectedSha256 = root.optString("sha256", ""),
+            signature = root.optString("signature", ""),
         )
     }
 

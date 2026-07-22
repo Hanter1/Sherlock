@@ -112,6 +112,16 @@ class AppSettings(context: Context) {
             prefs.edit().putBoolean(KEY_CATALOG_ANY_HOST, value).apply()
         }
 
+    /**
+     * When true, remote catalog must include a valid ECDSA signature
+     * ([CatalogSignature]). Invalid signatures are always rejected.
+     */
+    var catalogRequireSignature: Boolean
+        get() = prefs.getBoolean(KEY_CATALOG_REQUIRE_SIG, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_CATALOG_REQUIRE_SIG, value).apply()
+        }
+
     fun cycleParallel(): Int {
         val next = when (maxParallel) {
             3 -> 6
@@ -138,6 +148,7 @@ class AppSettings(context: Context) {
         private const val KEY_PERSIST_HISTORY = "persist_history"
         private const val KEY_SCAN_PRESET = "scan_preset"
         private const val KEY_CATALOG_ANY_HOST = "catalog_allow_any_host"
+        private const val KEY_CATALOG_REQUIRE_SIG = "catalog_require_signature"
         const val DEFAULT_PARALLEL = 6
         val ALLOWED_PARALLEL = setOf(3, 6, 10)
         /** Empty = only bundled asset until user sets a URL. */

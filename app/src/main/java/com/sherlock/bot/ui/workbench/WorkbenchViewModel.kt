@@ -84,6 +84,7 @@ data class WorkbenchUiState(
     val emailLookupGravatar: Boolean = true,
     val redactPiiOnShare: Boolean = false,
     val catalogAllowAnyHost: Boolean = false,
+    val catalogRequireSignature: Boolean = false,
     val hideInRecents: Boolean = true,
     val persistHistory: Boolean = true,
     val usernameCacheEntries: Int = 0,
@@ -143,6 +144,7 @@ class WorkbenchViewModel(
             emailLookupGravatar = appSettings.emailLookupGravatar,
             redactPiiOnShare = appSettings.redactPiiOnShare,
             catalogAllowAnyHost = appSettings.catalogAllowAnyHost,
+            catalogRequireSignature = appSettings.catalogRequireSignature,
             hideInRecents = appSettings.hideInRecents,
             persistHistory = appSettings.persistHistory,
             usernameCacheEntries = bot.usernameCacheSize(),
@@ -457,6 +459,11 @@ class WorkbenchViewModel(
         _state.update { it.copy(catalogAllowAnyHost = value) }
     }
 
+    fun setCatalogRequireSignature(value: Boolean) {
+        appSettings.catalogRequireSignature = value
+        _state.update { it.copy(catalogRequireSignature = value) }
+    }
+
     fun setEmailLookupMx(value: Boolean) {
         appSettings.emailLookupMx = value
         _state.update { it.copy(emailLookupMx = value) }
@@ -627,6 +634,7 @@ class WorkbenchViewModel(
                     isBusy = false,
                     historyLoaded = true,
                     pinnedMessageId = null,
+                    showClearConfirm = false,
                     searchQuery = "",
                     searchOpen = false,
                     scanProgress = null,
@@ -642,6 +650,23 @@ class WorkbenchViewModel(
                 )
             }
         }
+    }
+
+    fun deleteJournalMessages(messageIds: Collection<String>) {
+        if (messageIds.isEmpty()) return
+        val remove = messageIds.toSet()
+        _state.update { state ->
+            val doomed = state.messages.filter { it.id in remove }
+            val reportIds = doomed.mapNotNull { it.reportId }
+            if (reportIds.isNotEmpty()) bot.removeReports(reportIds)
+            val pinnedGone = state.pinnedMessageId != null && state.pinnedMessageId in remove
+            if (pinnedGone) appSettings.pinnedMessageId = null
+            state.copy(
+                messages = state.messages.filterNot { it.id in remove },
+                pinnedMessageId = if (pinnedGone) null else state.pinnedMessageId,
+            )
+        }
+        _toastEvents.tryEmit("Дело удалено")
     }
 
     private fun runRescan(username: String) {
@@ -901,6 +926,7 @@ class WorkbenchViewModel(
                 emailLookupGravatar = appSettings.emailLookupGravatar,
                 redactPiiOnShare = appSettings.redactPiiOnShare,
                 catalogAllowAnyHost = appSettings.catalogAllowAnyHost,
+                catalogRequireSignature = appSettings.catalogRequireSignature,
                 hideInRecents = appSettings.hideInRecents,
                 persistHistory = appSettings.persistHistory,
                 usernameCacheEntries = bot.usernameCacheSize(),
