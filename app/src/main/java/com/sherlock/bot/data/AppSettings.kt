@@ -97,9 +97,16 @@ class AppSettings(context: Context) {
 
     /** Username scan category preset. */
     var scanPreset: ScanPreset
-        get() = ScanPreset.fromId(prefs.getString(KEY_SCAN_PRESET, ScanPreset.ALL.id))
+        get() = ScanPreset.fromId(prefs.getString(KEY_SCAN_PRESET, ScanPreset.QUICK.id))
         set(value) {
             prefs.edit().putString(KEY_SCAN_PRESET, value.id).apply()
+        }
+
+    /** Include NSFW sites from the sherlock-project catalog. */
+    var includeNsfw: Boolean
+        get() = prefs.getBoolean(KEY_INCLUDE_NSFW, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_INCLUDE_NSFW, value).apply()
         }
 
     /**
@@ -147,6 +154,7 @@ class AppSettings(context: Context) {
         private const val KEY_PENDING_MODE = "pending_mode"
         private const val KEY_PERSIST_HISTORY = "persist_history"
         private const val KEY_SCAN_PRESET = "scan_preset"
+        private const val KEY_INCLUDE_NSFW = "include_nsfw"
         private const val KEY_CATALOG_ANY_HOST = "catalog_allow_any_host"
         private const val KEY_CATALOG_REQUIRE_SIG = "catalog_require_signature"
         const val DEFAULT_PARALLEL = 6

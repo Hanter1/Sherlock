@@ -46,6 +46,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -75,10 +77,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sherlock.bot.data.AppInfo
 import com.sherlock.bot.data.AppSettings
 import com.sherlock.bot.data.BotAction
@@ -102,6 +107,14 @@ private val MODE_TABS = listOf(
     ModeTab("phone", "Телефон", SearchMode.PHONE),
     ModeTab("email", "Email", SearchMode.EMAIL),
     ModeTab("name", "ФИО", SearchMode.FULL_NAME),
+)
+
+/** Shown as chips; the rest go into «Ещё». */
+private val REPORT_PRIMARY_ACTION_IDS = listOf(
+    "share",
+    "copy",
+    "rescan_errors",
+    "rescan",
 )
 
 private fun resolveJournalSelection(entries: List<ChatMessage>, id: String): String {
@@ -261,23 +274,38 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
                 .imePadding(),
         ) {
             val wide = maxWidth >= 720.dp
+            val keyboard = LocalSoftwareKeyboardController.current
+            val focusManager = LocalFocusManager.current
+            fun dismissKeyboard() {
+                keyboard?.hide()
+                focusManager.clearFocus()
+            }
             Column(Modifier.fillMaxSize()) {
                 CabinetHeader(
                     isOnline = state.isOnline,
                     isBusy = state.isBusy,
                     pendingMode = state.pendingMode,
                     scanProgress = state.scanProgress,
+                    compact = !wide,
                     onOpenJournal = {
+                        dismissKeyboard()
                         if (wide) journalOpen = !journalOpen
                         else scope.launch { drawerState.open() }
                     },
                     onSearch = {
+                        dismissKeyboard()
                         if (wide) journalOpen = true
                         else scope.launch { drawerState.open() }
                         focusJournalFilter = true
                     },
-                    onSettings = viewModel::openSettings,
-                    onAbout = viewModel::openAbout,
+                    onSettings = {
+                        dismissKeyboard()
+                        viewModel.openSettings()
+                    },
+                    onAbout = {
+                        dismissKeyboard()
+                        viewModel.openAbout()
+                    },
                     onCancel = viewModel::cancelScan,
                 )
                 ScanProgressBar(progress = state.scanProgress)
@@ -305,12 +333,17 @@ fun WorkbenchScreen(viewModel: WorkbenchViewModel) {
                         activeReport = activeReport,
                         statusText = statusText,
                         onMode = { actionId ->
+                            dismissKeyboard()
                             if (!state.isBusy) viewModel.onAction("", actionId)
                         },
                         onInputChange = viewModel::onInputChange,
-                        onSend = viewModel::send,
+                        onSend = {
+                            dismissKeyboard()
+                            viewModel.send()
+                        },
                         onCancel = viewModel::cancelScan,
                         onAction = { actionId ->
+                            dismissKeyboard()
                             val id = activeReport?.id ?: return@WorkbenchMain
                             viewModel.onAction(id, actionId)
                         },
@@ -443,6 +476,7 @@ private fun CabinetHeader(
     isBusy: Boolean,
     pendingMode: SearchMode,
     scanProgress: ScanProgressUi?,
+    compact: Boolean,
     onOpenJournal: () -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
@@ -453,11 +487,11 @@ private fun CabinetHeader(
         modifier = Modifier
             .fillMaxWidth()
             .background(Cabinet.BgElevated)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        IconButton(onClick = onOpenJournal) {
+        IconButton(onClick = onOpenJournal, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Default.Menu, contentDescription = "Журнал", tint = Cabinet.Text)
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -465,13 +499,15 @@ private fun CabinetHeader(
                 text = "SHERLOCK",
                 style = MaterialTheme.typography.titleLarge,
                 color = Cabinet.Text,
+                maxLines = 1,
+                fontSize = if (compact) 13.sp else 14.sp,
             )
             Text(
                 text = when {
-                    !isOnline -> "НЕТ СЕТИ · локально: телефон / ФИО"
-                    isBusy -> scanProgress?.shortLabel ?: "ВЫПОЛНЯЕТСЯ ЗАПРОС"
-                    pendingMode != SearchMode.NONE -> "РЕЖИМ · ${pendingModeLabel(pendingMode)}"
-                    else -> "ОТКРЫТЫЕ ИСТОЧНИКИ · РБ"
+                    !isOnline -> "НЕТ СЕТИ · телефон / ФИО"
+                    isBusy -> scanProgress?.shortLabel ?: "ЗАПРОС…"
+                    pendingMode != SearchMode.NONE -> pendingModeLabel(pendingMode)
+                    else -> "ОТКРЫТЫЕ ИСТОЧНИКИ"
                 },
                 style = MaterialTheme.typography.labelMedium,
                 color = if (!isOnline) Cabinet.Danger else Cabinet.TextMuted,
@@ -479,7 +515,7 @@ private fun CabinetHeader(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        StatusPill(online = isOnline)
+        StatusPill(online = isOnline, compact = compact)
         if (isBusy) {
             Text(
                 text = "СТОП",
@@ -489,23 +525,23 @@ private fun CabinetHeader(
                     .clip(RoundedCornerShape(6.dp))
                     .background(Cabinet.Accent)
                     .clickable(onClick = onCancel)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
             )
         }
-        IconButton(onClick = onSearch, enabled = !isBusy) {
+        IconButton(onClick = onSearch, enabled = !isBusy, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Default.Search, contentDescription = "Фильтр журнала", tint = Cabinet.TextSecondary)
         }
-        IconButton(onClick = onSettings, enabled = !isBusy) {
+        IconButton(onClick = onSettings, enabled = !isBusy, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Default.Settings, null, tint = Cabinet.TextSecondary)
         }
-        IconButton(onClick = onAbout, enabled = !isBusy) {
+        IconButton(onClick = onAbout, enabled = !isBusy, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Default.Info, null, tint = Cabinet.TextSecondary)
         }
     }
 }
 
 @Composable
-private fun StatusPill(online: Boolean) {
+private fun StatusPill(online: Boolean, compact: Boolean) {
     val color = if (online) Cabinet.Success else Cabinet.Danger
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -513,7 +549,10 @@ private fun StatusPill(online: Boolean) {
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
             .border(1.dp, color.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(
+                horizontal = if (compact) 6.dp else 10.dp,
+                vertical = 4.dp,
+            ),
     ) {
         Box(
             modifier = Modifier
@@ -521,11 +560,13 @@ private fun StatusPill(online: Boolean) {
                 .clip(RoundedCornerShape(50))
                 .background(color),
         )
-        Text(
-            text = if (online) "ОНЛАЙН" else "ОФЛАЙН",
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-        )
+        if (!compact) {
+            Text(
+                text = if (online) "ОНЛАЙН" else "ОФЛАЙН",
+                style = MaterialTheme.typography.labelMedium,
+                color = color,
+            )
+        }
     }
 }
 
@@ -571,7 +612,7 @@ private fun WorkbenchMain(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "КАБИНЕТ ЗАПРОСОВ",
+            text = "ЗАПРОС",
             style = MaterialTheme.typography.labelMedium,
             color = Cabinet.TextMuted,
         )
@@ -663,8 +704,7 @@ private fun QueryBar(
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f),
             enabled = !isBusy,
-            singleLine = false,
-            maxLines = 3,
+            singleLine = true,
             placeholder = {
                 Text(
                     text = when (pendingMode) {
@@ -679,8 +719,11 @@ private fun QueryBar(
                 )
             },
             shape = RoundedCornerShape(8.dp),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { if (!isBusy) onSend() }),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onDone = { if (!isBusy && value.isNotBlank()) onSend() },
+                onSend = { if (!isBusy && value.isNotBlank()) onSend() },
+            ),
             colors = fieldColors(),
         )
         IconButton(
@@ -750,7 +793,6 @@ private fun PinnedStrip(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReportCard(
     message: ChatMessage?,
@@ -774,7 +816,7 @@ private fun ReportCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Cabinet.PanelHigh)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -784,7 +826,7 @@ private fun ReportCard(
                 color = if (celebrate) Cabinet.Accent else Cabinet.TextMuted,
             )
             Text(
-                text = "ОТКРЫТЫЕ ДАННЫЕ",
+                text = "OPEN SOURCE",
                 style = MaterialTheme.typography.labelMedium,
                 color = Cabinet.TextMuted,
             )
@@ -818,7 +860,7 @@ private fun ReportCard(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "3. Enter или ▶ — результат здесь",
+                    text = "3. Готово / ▶ — результат здесь",
                     style = MaterialTheme.typography.bodyLarge,
                     color = Cabinet.TextSecondary,
                 )
@@ -829,7 +871,7 @@ private fun ReportCard(
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(scroll)
-                    .padding(14.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
                 Text(
                     text = ChatMarkdown.toAnnotatedString(
@@ -838,23 +880,78 @@ private fun ReportCard(
                         codeColor = Cabinet.Text,
                         codeBackground = Cabinet.BgElevated,
                     ),
-                    style = MaterialTheme.typography.bodyLarge.copy(color = Cabinet.Text),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = Cabinet.Text,
+                        lineHeight = 20.sp,
+                    ),
                 )
             }
             if (message.actions.isNotEmpty()) {
                 HorizontalDivider(color = Cabinet.Line)
-                FlowRow(
+                ReportActionBar(
+                    actions = message.actions,
+                    enabled = actionsEnabled,
+                    onAction = onAction,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportActionBar(
+    actions: List<BotAction>,
+    enabled: Boolean,
+    onAction: (String) -> Unit,
+) {
+    val primaryIds = REPORT_PRIMARY_ACTION_IDS
+    val primary = primaryIds.mapNotNull { id -> actions.find { it.id == id } }
+    val more = actions.filter { it.id !in primaryIds.toSet() }
+    var menuOpen by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        primary.forEach { action ->
+            ActionChip(
+                action = action,
+                enabled = enabled,
+                compact = true,
+                onClick = { onAction(action.id) },
+            )
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        if (more.isNotEmpty()) {
+            Box {
+                Text(
+                    text = "Ещё",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (enabled) Cabinet.TextSecondary else Cabinet.TextMuted,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, Cabinet.Line, RoundedCornerShape(6.dp))
+                        .clickable(enabled = enabled) { menuOpen = true }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                    containerColor = Cabinet.PanelHigh,
                 ) {
-                    message.actions.forEach { action ->
-                        ActionChip(
-                            action = action,
-                            enabled = actionsEnabled,
-                            onClick = { onAction(action.id) },
+                    more.forEach { action ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(action.label, color = Cabinet.Text)
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onAction(action.id)
+                            },
+                            enabled = enabled,
                         )
                     }
                 }
@@ -867,18 +964,24 @@ private fun ReportCard(
 private fun ActionChip(
     action: BotAction,
     enabled: Boolean,
+    compact: Boolean = false,
     onClick: () -> Unit,
 ) {
     Text(
         text = action.label,
         style = MaterialTheme.typography.labelLarge,
         color = if (enabled) Cabinet.Text else Cabinet.TextMuted,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .background(Cabinet.BgElevated)
             .border(1.dp, Cabinet.LineStrong, RoundedCornerShape(6.dp))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(
+                horizontal = if (compact) 10.dp else 12.dp,
+                vertical = if (compact) 6.dp else 8.dp,
+            ),
     )
 }
 
@@ -1089,6 +1192,11 @@ private fun SettingsDialog(
                     label = "Instagram / X в скане",
                     checked = state.includeBotProtected,
                     onCheckedChange = viewModel::setIncludeBotProtected,
+                )
+                SettingsSwitch(
+                    label = "NSFW-площадки (18+)",
+                    checked = state.includeNsfw,
+                    onCheckedChange = viewModel::setIncludeNsfw,
                 )
                 SettingsSwitch(
                     label = "Скрывать в недавних",

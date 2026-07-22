@@ -84,7 +84,7 @@ class OsintCatalogParserTest {
         assertTrue(sites.any { it.name == "OK.ru" })
         assertTrue(sites.any { it.name == "TikTok" && it.rateLimitMs > 0 })
         val full = OsintCatalogParser.parseFull(file.readText())
-        assertEquals(6, full.version)
+        assertEquals(7, full.version)
         assertNull(CatalogLimits.validateParsed(full))
         assertTrue(sites.any { it.name == "GitHub" && it.trustHttpStatus })
         assertTrue(sites.any { it.name == "GitLab" && it.okBodyMarkers.isNotEmpty() })

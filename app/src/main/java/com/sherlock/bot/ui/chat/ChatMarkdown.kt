@@ -13,12 +13,12 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 
 /**
- * Lightweight chat markdown: `code`, *bold*, and http(s) links via [LinkAnnotation].
+ * Lightweight chat markdown: `code`, *bold*, [label](url), and bare http(s) links.
  */
 object ChatMarkdown {
 
     private val tokenRegex = Regex(
-        """(`[^`]+`|\*[^*\n]+\*|https?://[^\s)\]>]+)""",
+        """(\[[^\]\n]+]\(https?://[^)\s]+\)|`[^`]+`|\*[^*\n]+\*|https?://[^\s)\]>]+)""",
     )
 
     fun toAnnotatedString(
@@ -34,6 +34,11 @@ object ChatMarkdown {
             }
             val token = match.value
             when {
+                token.startsWith('[') && token.contains("](http") -> {
+                    val label = token.substringAfter('[').substringBefore(']')
+                    val url = token.substringAfter("](").substringBefore(')')
+                    appendMarkdownLink(label, url, linkColor)
+                }
                 token.startsWith('`') && token.endsWith('`') && token.length >= 2 -> {
                     val code = token.substring(1, token.lastIndex)
                     withStyle(
@@ -56,20 +61,7 @@ object ChatMarkdown {
                 token.startsWith("http") -> {
                     val url = token.trimEnd('.', ',', ';', ')', ']')
                     val trailing = token.removePrefix(url)
-                    withLink(
-                        LinkAnnotation.Url(
-                            url = url,
-                            styles = TextLinkStyles(
-                                style = SpanStyle(
-                                    color = linkColor,
-                                    textDecoration = TextDecoration.Underline,
-                                    fontWeight = FontWeight.Medium,
-                                ),
-                            ),
-                        ),
-                    ) {
-                        append(url)
-                    }
+                    appendMarkdownLink(shortenUrlLabel(url), url, linkColor)
                     if (trailing.isNotEmpty()) append(trailing)
                 }
                 else -> append(token)
@@ -90,14 +82,49 @@ object ChatMarkdown {
             }
             val token = match.value
             when {
+                token.startsWith('[') && token.contains("](http") ->
+                    append(token.substringAfter('[').substringBefore(']'))
                 token.startsWith('`') && token.endsWith('`') && token.length >= 2 ->
                     append(token.substring(1, token.lastIndex))
                 token.startsWith('*') && token.endsWith('*') && token.length >= 2 ->
                     append(token.substring(1, token.lastIndex))
+                token.startsWith("http") ->
+                    append(shortenUrlLabel(token.trimEnd('.', ',', ';', ')', ']')))
                 else -> append(token.trimEnd('.', ',', ';', ')', ']'))
             }
             cursor = match.range.last + 1
         }
         if (cursor < text.length) append(text.substring(cursor))
+    }
+
+    private fun AnnotatedString.Builder.appendMarkdownLink(
+        label: String,
+        url: String,
+        linkColor: Color,
+    ) {
+        withLink(
+            LinkAnnotation.Url(
+                url = url,
+                styles = TextLinkStyles(
+                    style = SpanStyle(
+                        color = linkColor,
+                        textDecoration = TextDecoration.Underline,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                ),
+            ),
+        ) {
+            append(label)
+        }
+    }
+
+    /** Host (+ short path) for bare URLs so report body stays readable. */
+    fun shortenUrlLabel(url: String): String {
+        val bare = url.removePrefix("https://").removePrefix("http://")
+        val slash = bare.indexOf('/')
+        if (slash < 0) return bare.take(40)
+        val host = bare.substring(0, slash)
+        val path = bare.substring(slash)
+        return if (path.length <= 18) host + path else host + path.take(16) + "…"
     }
 }

@@ -144,10 +144,12 @@ class OsintEngineClassifyTest {
         val report = engine.analyzeFullName("Иванов Иван")
         assertTrue(report.body.contains("q=%D0%98%D0%B2%D0%B0%D0%BD%D0%BE%D0%B2"))
         val googleLine = report.body.lineSequence().first { it.contains("google.com") }
-        val encoded = googleLine.substringAfter("q=")
+        val encoded = googleLine.substringAfter("q=").substringBefore(')')
         val decoded = URLDecoder.decode(encoded, StandardCharsets.UTF_8.name())
         assertTrue(decoded.contains("Иванов"))
         assertTrue(decoded.contains("Иван"))
+        assertTrue(report.body.contains("[Google]("))
+        assertTrue(report.body.contains("[Yandex BY]("))
     }
 
     @Test
@@ -169,5 +171,70 @@ class OsintEngineClassifyTest {
         val uncertain = result as OsintEngine.CheckOutcome.Uncertain
         assertTrue(uncertain.diagnostics?.formatBrief()?.contains("HTTP 200") == true)
         assertTrue(uncertain.diagnostics?.formatBrief()?.contains("нет маркера") == true)
+    }
+
+    @Test
+    fun sherlockStatusCodeFoundOn2xx() {
+        val site = OsintSite(
+            name = "About.me",
+            urlTemplate = "https://about.me/{user}",
+            errorType = SiteErrorType.STATUS_CODE,
+            trustHttpStatus = true,
+        )
+        assertTrue(engine.classify(site, "https://about.me/x", 200, null) is OsintEngine.CheckOutcome.Found)
+        assertTrue(engine.classify(site, "https://about.me/x", 404, null) is OsintEngine.CheckOutcome.Missing)
+    }
+
+    @Test
+    fun sherlockMessageUsesErrorBody() {
+        val site = OsintSite(
+            name = "MsgSite",
+            urlTemplate = "https://example.com/{user}",
+            errorType = SiteErrorType.MESSAGE,
+            errorBodyMarkers = listOf("does not exist"),
+            errorCodes = emptySet(),
+        )
+        assertTrue(
+            engine.classify(site, "https://example.com/x", 200, "User does not exist")
+                is OsintEngine.CheckOutcome.Missing,
+        )
+        assertTrue(
+            engine.classify(site, "https://example.com/x", 200, "Welcome profile")
+                is OsintEngine.CheckOutcome.Found,
+        )
+        assertTrue(
+            engine.classify(site, "https://example.com/x", 502, "Bad Gateway")
+                is OsintEngine.CheckOutcome.Uncertain,
+        )
+    }
+
+    @Test
+    fun sherlockResponseUrlRedirectMeansMissing() {
+        val site = OsintSite(
+            name = "RedirectSite",
+            urlTemplate = "https://example.com/u/{user}",
+            errorType = SiteErrorType.RESPONSE_URL,
+            errorCodes = emptySet(),
+        )
+        val probe = OsintEngine.HttpProbe(
+            code = 200,
+            body = null,
+            finalUrl = "https://example.com/login",
+            redirectCount = 1,
+        )
+        assertTrue(
+            engine.classify(site, "https://example.com/u/x", 200, null, probe)
+                is OsintEngine.CheckOutcome.Missing,
+        )
+    }
+
+    @Test
+    fun bundledCatalogIsSherlockScale() {
+        val file = java.io.File("src/main/assets/osint_sites.json")
+        assertTrue(file.exists())
+        val parsed = OsintCatalogParser.parseFull(file.readText())
+        assertTrue(parsed.version >= 7)
+        assertTrue(parsed.sites.size >= 400)
+        assertTrue(CatalogLimits.validateParsed(parsed) == null)
     }
 }

@@ -7,7 +7,8 @@ enum class ScanPreset(
     val id: String,
     val label: String,
 ) {
-    ALL("all", "Все"),
+    QUICK("quick", "Быстрый"),
+    ALL("all", "Sherlock Full"),
     SOCIAL("social", "Соцсети"),
     DEV("dev", "Dev"),
     MEDIA("media", "Медиа"),
@@ -16,7 +17,7 @@ enum class ScanPreset(
 
     companion object {
         fun fromId(raw: String?): ScanPreset =
-            entries.firstOrNull { it.id.equals(raw, ignoreCase = true) } ?: ALL
+            entries.firstOrNull { it.id.equals(raw, ignoreCase = true) } ?: QUICK
     }
 }
 
@@ -30,9 +31,14 @@ object ScanSiteFilter {
     fun filter(
         sites: List<OsintSite>,
         includeBotProtected: Boolean,
-        preset: ScanPreset = ScanPreset.ALL,
+        preset: ScanPreset = ScanPreset.QUICK,
+        includeNsfw: Boolean = false,
     ): List<OsintSite> {
         var filtered = when (preset) {
+            ScanPreset.QUICK -> {
+                val curated = sites.filter { it.curated }
+                curated.ifEmpty { sites.filterNot { it.nsfw } }
+            }
             ScanPreset.ALL -> sites
             ScanPreset.SOCIAL -> sites.filter { site ->
                 site.categories.any { it in setOf("social", "creator") }
@@ -44,6 +50,9 @@ object ScanSiteFilter {
                 site.categories.any { it in setOf("media", "design", "gaming") }
             }
             ScanPreset.BY -> sites.filter { it.name in BY_FOCUS_NAMES }
+        }
+        if (!includeNsfw) {
+            filtered = filtered.filterNot { it.nsfw }
         }
         if (!includeBotProtected) {
             filtered = filtered.filterNot { it.name in BOT_PROTECTED_NAMES }

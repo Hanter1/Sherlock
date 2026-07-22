@@ -2,20 +2,26 @@
 
 Площадки и справочники живут в assets и могут обновляться без нового APK.
 
+Username-скан использует **конвертированный** список [sherlock-project/sherlock](https://github.com/sherlock-project/sherlock) (MIT) + наши curated-площадки (Telegram, BY-фокус). Движок — нативный Kotlin, не Python CLI.
+
+Обновление из upstream:
+
+```bash
+python scripts/import_sherlock_catalog.py
+```
+
 ## Файлы в APK
 
 | Файл | Назначение |
 |------|------------|
-| `app/src/main/assets/osint_sites.json` | URL-шаблоны, маркеры, категории, `rateLimitMs` |
+| `app/src/main/assets/osint_sites.json` | URL-шаблоны, маркеры, `errorType`, категории, `rateLimitMs` |
 | `app/src/main/assets/def_codes.json` | Справочник DEF / кодов |
 
-Категории площадок: `dev` / `social` / `gaming` / `media` / `design` / `creator`.
+Категории: `dev` / `social` / `gaming` / `media` / `design` / `creator` / `other` / `nsfw`.
 
-Каталог v6: у площадок есть `okBodyMarkers` и/или `trustHttpStatus` — меньше ложных FOUND.
+Пресеты скана: **Быстрый** (curated) · **Sherlock Full** (~480) · Соцсети / Dev / Медиа / РБ. NSFW — тумблер в настройках (выкл. по умолчанию).
 
-## Пресеты скана
-
-В настройках: Все / Соцсети / Dev / Медиа / РБ (+ опции Instagram/X).
+Детект (`errorType`): `status_code` · `message` · `response_url` · `legacy` (наши маркеры).
 
 ## Remote-каталог
 

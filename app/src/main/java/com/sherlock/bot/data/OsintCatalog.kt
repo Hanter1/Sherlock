@@ -1,7 +1,24 @@
 package com.sherlock.bot.data
 
-import org.json.JSONArray
-import org.json.JSONObject
+/**
+ * How to decide username claimed / available (aligned with sherlock-project).
+ */
+enum class SiteErrorType(val id: String) {
+    /** Previous Sherlock Bot heuristics (okBodyMarkers / trustHttpStatus / uncertain). */
+    LEGACY("legacy"),
+    /** HTTP 2xx → found; otherwise missing/error. */
+    STATUS_CODE("status_code"),
+    /** Body contains errorMsg → missing; 5xx → uncertain; else found. */
+    MESSAGE("message"),
+    /** Redirect away from profile URL → missing. */
+    RESPONSE_URL("response_url"),
+    ;
+
+    companion object {
+        fun fromId(raw: String?): SiteErrorType =
+            entries.firstOrNull { it.id.equals(raw, ignoreCase = true) } ?: LEGACY
+    }
+}
 
 data class OsintSite(
     val name: String,
@@ -24,6 +41,15 @@ data class OsintSite(
      * (typical for HEAD probes where 404 is reliable).
      */
     val trustHttpStatus: Boolean = false,
+    val errorType: SiteErrorType = SiteErrorType.LEGACY,
+    /** Skip site when username does not match (sherlock regexCheck). */
+    val regexCheck: String = "",
+    /** Alternate probe URL (sherlock urlProbe); still uses `{user}`. */
+    val urlProbe: String = "",
+    val nsfw: Boolean = false,
+    /** Curated / regional short list for «Быстрый» preset. */
+    val curated: Boolean = false,
+    val requestHeaders: Map<String, String> = emptyMap(),
 )
 
 object OsintCatalogParser {
@@ -34,12 +60,13 @@ object OsintCatalogParser {
         val sites: List<OsintSite>,
         val expectedSha256: String = "",
         val signature: String = "",
+        val sourceLabel: String = "",
     )
 
     fun parse(json: String): List<OsintSite> = parseFull(json).sites
 
     fun parseFull(json: String): ParsedCatalog {
-        val root = JSONObject(json)
+        val root = org.json.JSONObject(json)
         val sitesArr = root.getJSONArray("sites")
         require(sitesArr.length() > 0) { "osint catalog is empty" }
         val sites = buildList {
@@ -53,14 +80,21 @@ object OsintCatalogParser {
             sites = sites,
             expectedSha256 = root.optString("sha256", ""),
             signature = root.optString("signature", ""),
+            sourceLabel = root.optString("source", ""),
         )
     }
 
-    private fun parseSite(obj: JSONObject): OsintSite {
+    private fun parseSite(obj: org.json.JSONObject): OsintSite {
         val name = obj.getString("name")
         val urlTemplate = obj.getString("urlTemplate")
         require(urlTemplate.contains("{user}")) {
             "urlTemplate for $name must contain {user}"
+        }
+        val urlProbe = obj.optString("urlProbe", "")
+        if (urlProbe.isNotBlank()) {
+            require(urlProbe.contains("{user}")) {
+                "urlProbe for $name must contain {user}"
+            }
         }
         return OsintSite(
             name = name,
@@ -75,10 +109,16 @@ object OsintCatalogParser {
             rateLimitMs = obj.optLong("rateLimitMs", 0L)
                 .coerceIn(0L, CatalogLimits.MAX_RATE_LIMIT_MS),
             trustHttpStatus = obj.optBoolean("trustHttpStatus", false),
+            errorType = SiteErrorType.fromId(obj.optString("errorType", SiteErrorType.LEGACY.id)),
+            regexCheck = obj.optString("regexCheck", "").take(CatalogLimits.MAX_REGEX_LEN),
+            urlProbe = urlProbe,
+            nsfw = obj.optBoolean("nsfw", false),
+            curated = obj.optBoolean("curated", false),
+            requestHeaders = obj.optStringMap("headers"),
         )
     }
 
-    private fun JSONObject.optIntArray(key: String): Set<Int>? {
+    private fun org.json.JSONObject.optIntArray(key: String): Set<Int>? {
         if (!has(key) || isNull(key)) return null
         val arr = getJSONArray(key)
         return buildSet {
@@ -86,12 +126,25 @@ object OsintCatalogParser {
         }
     }
 
-    private fun JSONObject.optStringArray(key: String): List<String> {
+    private fun org.json.JSONObject.optStringArray(key: String): List<String> {
         if (!has(key) || isNull(key)) return emptyList()
         val arr = getJSONArray(key)
         return buildList {
             for (i in 0 until arr.length()) add(arr.getString(i))
         }
+    }
+
+    private fun org.json.JSONObject.optStringMap(key: String): Map<String, String> {
+        if (!has(key) || isNull(key)) return emptyMap()
+        val obj = optJSONObject(key) ?: return emptyMap()
+        val out = linkedMapOf<String, String>()
+        val keys = obj.keys()
+        while (keys.hasNext() && out.size < CatalogLimits.MAX_HEADERS) {
+            val k = keys.next()
+            val v = obj.optString(k, "").take(CatalogLimits.MAX_HEADER_VALUE_LEN)
+            if (k.isNotBlank() && v.isNotBlank()) out[k] = v
+        }
+        return out
     }
 }
 
@@ -139,7 +192,7 @@ object OsintCatalog {
             sites = parsed.sites,
             version = parsed.version,
             updated = parsed.updated,
-            source = source,
+            source = source.ifBlank { parsed.sourceLabel.ifBlank { "asset" } },
             sha256 = CatalogRepository.sha256Hex(json),
         )
     }
@@ -160,7 +213,10 @@ object OsintCatalog {
           "name": "GitHub",
           "urlTemplate": "https://github.com/{user}",
           "errorCodes": [404],
-          "useHead": true
+          "useHead": true,
+          "trustHttpStatus": true,
+          "errorType": "status_code",
+          "curated": true
         },
         {
           "name": "Telegram",
@@ -169,7 +225,9 @@ object OsintCatalog {
           "errorCodes": [],
           "errorBodyMarkers": ["If you have <strong>Telegram", "tgme_icon_user"],
           "okBodyMarkers": ["tgme_page_title", "tgme_page_photo"],
-          "useHead": false
+          "useHead": false,
+          "errorType": "legacy",
+          "curated": true
         },
         {
           "name": "Steam",
@@ -177,7 +235,9 @@ object OsintCatalog {
           "errorCodes": [],
           "errorBodyMarkers": ["The specified profile could not be found", "g_rgProfileData = {}"],
           "okBodyMarkers": ["steamID64", "actual_persona_name"],
-          "useHead": false
+          "useHead": false,
+          "errorType": "legacy",
+          "curated": true
         }
       ]
     }

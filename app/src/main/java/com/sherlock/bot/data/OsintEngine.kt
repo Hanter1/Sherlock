@@ -36,12 +36,13 @@ class OsintEngine(
     private val sessionCache: UsernameSessionCache = UsernameSessionCache(),
     private val diskCache: UsernameDiskCache? = null,
     private val includeBotProtected: () -> Boolean = { true },
-    private val scanPreset: () -> ScanPreset = { ScanPreset.ALL },
+    private val includeNsfw: () -> Boolean = { false },
+    private val scanPreset: () -> ScanPreset = { ScanPreset.QUICK },
     private val emailLookupMx: () -> Boolean = { true },
     private val emailLookupGravatar: () -> Boolean = { true },
     private val hostRateLimiter: HostRateLimiter = HostRateLimiter(),
 ) {
-    private val usernamePattern = Pattern.compile("^[A-Za-z0-9._-]{2,32}$")
+    private val usernamePattern = Pattern.compile("^[A-Za-z0-9._-]{2,39}$")
 
     suspend fun searchUsername(
         raw: String,
@@ -51,7 +52,7 @@ class OsintEngine(
     ): OsintResult.UsernameReport = withContext(Dispatchers.IO) {
         val username = raw.trim().removePrefix("@")
         require(usernamePattern.matcher(username).matches()) {
-            "Никнейм должен быть 2–32 символа: буквы, цифры, . _ -"
+            "Никнейм должен быть 2–39 символов: буквы, цифры, . _ -"
         }
 
         val partialScan = !onlySites.isNullOrEmpty()
@@ -90,6 +91,7 @@ class OsintEngine(
             sites = OsintCatalog.usernameSites,
             includeBotProtected = includeBotProtected(),
             preset = scanPreset(),
+            includeNsfw = includeNsfw(),
         ).let { list ->
             if (onlySites.isNullOrEmpty()) list
             else list.filter { it.name in onlySites }
@@ -273,6 +275,7 @@ class OsintEngine(
             sites = runCatching { OsintCatalog.usernameSites }.getOrDefault(emptyList()),
             includeBotProtected = includeBotProtected(),
             preset = scanPreset(),
+            includeNsfw = includeNsfw(),
         ).size.coerceAtLeast(1)
         val total = siteTotal * 2
 
@@ -313,10 +316,10 @@ class OsintEngine(
                 appendLine("Запрос: *$name*")
                 appendLine()
                 appendLine("Открытые точки входа (акцент на РБ):")
-                appendLine("• Google BY: https://www.google.by/search?q=$query&hl=be")
-                appendLine("• Yandex BY: https://yandex.by/search/?text=$query")
-                appendLine("• VK: https://vk.com/search?c%5Bq%5D=$query&c%5Bsection%5D=people")
-                appendLine("• Google: https://www.google.com/search?q=$query")
+                appendLine("• [Google BY](https://www.google.by/search?q=$query&hl=be)")
+                appendLine("• [Yandex BY](https://yandex.by/search/?text=$query)")
+                appendLine("• [VK](https://vk.com/search?c%5Bq%5D=$query&c%5Bsection%5D=people)")
+                appendLine("• [Google](https://www.google.com/search?q=$query)")
                 appendLine()
                 appendLine("Приложение не агрегирует персональные досье и не лезет в закрытые реестры.")
             }.trim(),
@@ -324,17 +327,40 @@ class OsintEngine(
     }
 
     private suspend fun checkSite(site: OsintSite, username: String): CheckOutcome {
-        val url = site.urlTemplate.replace("{user}", username)
+        if (site.regexCheck.isNotBlank()) {
+            val ok = runCatching { Regex(site.regexCheck).containsMatchIn(username) }.getOrDefault(false)
+            if (!ok) {
+                return CheckOutcome.Missing(site.name)
+            }
+        }
+
+        val profileUrl = site.urlTemplate.replace("{user}", username)
+        val probeUrl = site.urlProbe.ifBlank { site.urlTemplate }.replace("{user}", username)
         return try {
-            val needsBody = site.errorBodyMarkers.isNotEmpty() ||
-                site.okBodyMarkers.isNotEmpty() ||
-                site.blockBodyMarkers.isNotEmpty()
+            val needsBody = when (site.errorType) {
+                SiteErrorType.MESSAGE -> true
+                SiteErrorType.STATUS_CODE -> false
+                SiteErrorType.RESPONSE_URL -> false
+                SiteErrorType.LEGACY -> site.errorBodyMarkers.isNotEmpty() ||
+                    site.okBodyMarkers.isNotEmpty() ||
+                    site.blockBodyMarkers.isNotEmpty()
+            }
             val method = if (!needsBody && site.useHead) "HEAD" else "GET"
-            var response = executeWithRetry(method, url, readBody = needsBody || method == "GET")
+            var response = executeWithRetry(
+                method = method,
+                url = probeUrl,
+                readBody = needsBody || method == "GET",
+                headers = site.requestHeaders,
+            )
 
             if (method == "HEAD" && response.code in setOf(405, 403, 400)) {
                 currentCoroutineContext().ensureActive()
-                response = executeWithRetry("GET", url, readBody = needsBody)
+                response = executeWithRetry(
+                    method = "GET",
+                    url = probeUrl,
+                    readBody = needsBody,
+                    headers = site.requestHeaders,
+                )
             }
 
             if (response.code == 429) {
@@ -347,7 +373,7 @@ class OsintEngine(
 
             classify(
                 site = site,
-                url = url,
+                url = profileUrl,
                 code = response.code,
                 body = response.body,
                 probe = response,
@@ -371,6 +397,101 @@ class OsintEngine(
     ): CheckOutcome {
         val baseDiag = probe?.toDiagnostics() ?: HttpDiagnostics.of(code = code, finalUrl = url)
 
+        return when (site.errorType) {
+            SiteErrorType.STATUS_CODE -> classifyStatusCode(site, url, code, baseDiag)
+            SiteErrorType.MESSAGE -> classifyMessage(site, url, code, body, baseDiag)
+            SiteErrorType.RESPONSE_URL -> classifyResponseUrl(site, url, code, probe, baseDiag)
+            SiteErrorType.LEGACY -> classifyLegacy(site, url, code, body, baseDiag)
+        }
+    }
+
+    private fun classifyStatusCode(
+        site: OsintSite,
+        url: String,
+        code: Int,
+        baseDiag: HttpDiagnostics,
+    ): CheckOutcome = when {
+        code in 200..299 -> CheckOutcome.Found(site.name, url, baseDiag)
+        code == 404 || code == 410 || (site.errorCodes.isNotEmpty() && code in site.errorCodes) ->
+            CheckOutcome.Missing(site.name)
+        else -> CheckOutcome.Error(
+            site = site.name,
+            reason = "HTTP $code",
+            diagnostics = baseDiag.withDetail("HTTP $code"),
+        )
+    }
+
+    private fun classifyMessage(
+        site: OsintSite,
+        url: String,
+        code: Int,
+        body: String?,
+        baseDiag: HttpDiagnostics,
+    ): CheckOutcome {
+        if (code in 500..599) {
+            return CheckOutcome.Uncertain(
+                site = site.name,
+                url = url,
+                reason = "HTTP $code",
+                diagnostics = baseDiag.withDetail("HTTP $code"),
+            )
+        }
+        val text = body.orEmpty()
+        if (site.errorBodyMarkers.any { marker -> text.contains(marker, ignoreCase = true) }) {
+            return CheckOutcome.Missing(site.name)
+        }
+        return if (code in 200..299) {
+            CheckOutcome.Found(site.name, url, baseDiag)
+        } else {
+            CheckOutcome.Error(
+                site = site.name,
+                reason = "HTTP $code",
+                diagnostics = baseDiag.withDetail("HTTP $code"),
+            )
+        }
+    }
+
+    private fun classifyResponseUrl(
+        site: OsintSite,
+        url: String,
+        code: Int,
+        probe: HttpProbe?,
+        baseDiag: HttpDiagnostics,
+    ): CheckOutcome {
+        if (code in 500..599) {
+            return CheckOutcome.Uncertain(
+                site = site.name,
+                url = url,
+                reason = "HTTP $code",
+                diagnostics = baseDiag.withDetail("HTTP $code"),
+            )
+        }
+        val finalUrl = probe?.finalUrl.orEmpty()
+        if (finalUrl.isNotBlank() && !sameProfileUrl(url, finalUrl) &&
+            (probe?.redirectCount ?: 0) > 0
+        ) {
+            return CheckOutcome.Missing(site.name)
+        }
+        return if (code in 200..299) {
+            CheckOutcome.Found(site.name, url, baseDiag)
+        } else if (code == 404 || code == 410) {
+            CheckOutcome.Missing(site.name)
+        } else {
+            CheckOutcome.Error(
+                site = site.name,
+                reason = "HTTP $code",
+                diagnostics = baseDiag.withDetail("HTTP $code"),
+            )
+        }
+    }
+
+    private fun classifyLegacy(
+        site: OsintSite,
+        url: String,
+        code: Int,
+        body: String?,
+        baseDiag: HttpDiagnostics,
+    ): CheckOutcome {
         if (site.errorCodes.isNotEmpty() && code in site.errorCodes) {
             return CheckOutcome.Missing(site.name)
         }
@@ -414,7 +535,6 @@ class OsintEngine(
             }
         }
 
-        // Without profile markers / trusted status codes, HTTP 2xx is not a confirmed FOUND.
         return when {
             code in site.okCodes || code in 200..299 -> CheckOutcome.Uncertain(
                 site = site.name,
@@ -431,19 +551,29 @@ class OsintEngine(
         }
     }
 
+    /** Compare profile URLs ignoring trailing slash / scheme case. */
+    internal fun sameProfileUrl(expected: String, actual: String): Boolean {
+        fun norm(u: String): String =
+            u.trim().trimEnd('/').lowercase().removePrefix("https://").removePrefix("http://")
+        return norm(expected) == norm(actual) ||
+            norm(actual).startsWith(norm(expected)) ||
+            norm(expected).startsWith(norm(actual))
+    }
+
     internal fun shouldRetry(code: Int): Boolean = code in RETRYABLE_CODES
 
     private suspend fun executeWithRetry(
         method: String,
         url: String,
         readBody: Boolean,
+        headers: Map<String, String> = emptyMap(),
     ): HttpProbe {
         var delayMs = INITIAL_RETRY_DELAY_MS
         var lastError: Exception? = null
         repeat(maxRetries + 1) { attempt ->
             currentCoroutineContext().ensureActive()
             try {
-                val probe = execute(method, url, readBody)
+                val probe = execute(method, url, readBody, headers)
                 if (!shouldRetry(probe.code) || attempt == maxRetries) {
                     return probe
                 }
@@ -471,14 +601,22 @@ class OsintEngine(
         throw lastError ?: IllegalStateException("retry exhausted")
     }
 
-    private suspend fun execute(method: String, url: String, readBody: Boolean): HttpProbe {
-        val request = Request.Builder()
+    private suspend fun execute(
+        method: String,
+        url: String,
+        readBody: Boolean,
+        headers: Map<String, String> = emptyMap(),
+    ): HttpProbe {
+        val builder = Request.Builder()
             .url(url)
             .method(method, null)
             .header("User-Agent", HttpHeaders.USER_AGENT)
             .header("Accept", HttpHeaders.ACCEPT_HTML)
             .header("Accept-Language", HttpHeaders.ACCEPT_LANGUAGE)
-            .build()
+        for ((key, value) in headers) {
+            builder.header(key, value)
+        }
+        val request = builder.build()
 
         val call = client.newCall(request)
         val completionHandle = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion {

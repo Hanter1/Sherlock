@@ -6,12 +6,15 @@ import java.net.URI
  * Safety bounds for remote / parsed OSINT catalogs.
  */
 object CatalogLimits {
-    const val MAX_BYTES = 512_000
-    const val MAX_SITES = 200
+    const val MAX_BYTES = 1_500_000
+    const val MAX_SITES = 600
     const val MAX_RATE_LIMIT_MS = 10_000L
     const val MAX_MARKER_LEN = 200
     const val MAX_MARKERS_PER_LIST = 32
-    const val MAX_NAME_LEN = 64
+    const val MAX_NAME_LEN = 80
+    const val MAX_REGEX_LEN = 200
+    const val MAX_HEADERS = 16
+    const val MAX_HEADER_VALUE_LEN = 200
 
     /** Hosts allowed for remote catalog download (exact or subdomain). */
     val ALLOWED_HOST_SUFFIXES: List<String> = listOf(
@@ -60,6 +63,14 @@ object CatalogLimits {
             }
             if (!site.urlTemplate.startsWith("https://", ignoreCase = true)) {
                 return "${site.name}: urlTemplate должен быть HTTPS"
+            }
+            if (site.urlProbe.isNotBlank() &&
+                !site.urlProbe.startsWith("https://", ignoreCase = true)
+            ) {
+                return "${site.name}: urlProbe должен быть HTTPS"
+            }
+            if (site.regexCheck.length > MAX_REGEX_LEN) {
+                return "${site.name}: regexCheck слишком длинный"
             }
             if (site.rateLimitMs > MAX_RATE_LIMIT_MS) {
                 return "${site.name}: rateLimitMs > $MAX_RATE_LIMIT_MS"

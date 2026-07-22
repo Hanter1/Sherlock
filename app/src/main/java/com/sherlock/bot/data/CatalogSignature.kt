@@ -57,6 +57,12 @@ object CatalogSignature {
                 site.useHead.toString(),
                 site.rateLimitMs.toString(),
                 site.trustHttpStatus.toString(),
+                site.errorType.id,
+                site.regexCheck,
+                site.urlProbe,
+                site.nsfw.toString(),
+                site.curated.toString(),
+                site.requestHeaders.toSortedMap().entries.joinToString(";") { "${it.key}=${it.value}" },
             ).joinToString("|")
         }
         return CatalogRepository.sha256Hex(lines.joinToString("\n"))

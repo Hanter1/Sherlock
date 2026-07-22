@@ -374,7 +374,8 @@ class BotInteractor(
             if (found.isNotEmpty()) {
                 appendLine("Уже найдены:")
                 found.forEach { p ->
-                    appendLine("• ${p.site}${p.url?.let { ": $it" } ?: ""}")
+                    val link = p.url?.let { "[${p.site}]($it)" } ?: p.site
+                    appendLine("• $link")
                 }
             } else {
                 appendLine("До остановки подтверждённые профили не найдены.")
@@ -408,6 +409,12 @@ class BotInteractor(
                 "Найдено: *${result.found.size}* · неуверенно: ${result.uncertain.size} · " +
                     "нет: ${result.notFound.size} · ошибки: ${result.errors.size} · всего: $total",
             )
+            runCatching { OsintCatalog.info() }.getOrNull()?.let { info ->
+                appendLine(
+                    "Каталог · ${info.siteCount} площадок · ${info.source.ifBlank { "asset" }}" +
+                        if (info.version > 0) " · v${info.version}" else "",
+                )
+            }
             if (!result.fromCache) {
                 appendLine("Время: ${SiteCategories.formatElapsed(result.elapsedMs)}")
             }
@@ -443,10 +450,11 @@ class BotInteractor(
                 appendLine("Неуверенно (нет маркера профиля):")
                 result.uncertain.forEach { hit ->
                     val diag = hit.diagnostics?.formatBrief()?.takeIf { it.isNotBlank() }
+                    val link = "[${hit.site}](${hit.url})"
                     if (diag != null) {
-                        appendLine("• ${hit.site}: ${hit.url} ($diag)")
+                        appendLine("• $link ($diag)")
                     } else {
-                        appendLine("• ${hit.site}: ${hit.url}")
+                        appendLine("• $link")
                     }
                 }
                 appendLine()
@@ -486,7 +494,7 @@ class BotInteractor(
         }
         for ((label, hits) in groups) {
             appendLine("[$label]")
-            hits.forEach { appendLine("• ${it.site}: ${it.url}") }
+            hits.forEach { appendLine("• [${it.site}](${it.url})") }
         }
     }
 
@@ -524,22 +532,20 @@ class BotInteractor(
 
     private fun usernameReportActions(report: OsintResult.UsernameReport): List<BotAction> {
         val actions = mutableListOf(
-            BotAction("rescan", "Повторить без кэша"),
+            BotAction("share", "Поделиться"),
+            BotAction("copy", "Копировать"),
         )
         if (UsernameReportMerge.failedSiteNames(report).isNotEmpty()) {
             actions.add(BotAction("rescan_errors", "Добить ошибки"))
         }
         actions += listOf(
+            BotAction("rescan", "Без кэша"),
             BotAction("pin_report", "Закрепить"),
             BotAction("report_found", "Только найденные"),
             BotAction("report_no_errors", "Без ошибок"),
             BotAction("report_full", "Полный отчёт"),
             BotAction("export_md", "Экспорт MD"),
             BotAction("export_json", "Экспорт JSON"),
-            BotAction("share", "Поделиться"),
-            BotAction("copy", "Копировать"),
-            BotAction("username", "Никнейм"),
-            BotAction("clear_history", "Очистить чат"),
         )
         return actions
     }
@@ -547,14 +553,8 @@ class BotInteractor(
     private fun reportActions(): List<BotAction> = listOf(
         BotAction("share", "Поделиться"),
         BotAction("copy", "Копировать"),
-        BotAction("export_md", "Экспорт MD"),
         BotAction("pin_report", "Закрепить"),
-        BotAction("username", "Никнейм"),
-        BotAction("compare", "Сравнить"),
-        BotAction("phone", "Телефон"),
-        BotAction("email", "Email"),
-        BotAction("name", "ФИО"),
-        BotAction("clear_history", "Очистить чат"),
+        BotAction("export_md", "Экспорт MD"),
     )
 
     private fun bot(

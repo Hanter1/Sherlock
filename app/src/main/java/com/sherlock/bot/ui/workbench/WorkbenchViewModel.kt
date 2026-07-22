@@ -81,7 +81,8 @@ data class WorkbenchUiState(
     val scanProgress: ScanProgressUi? = null,
     val maxParallel: Int = AppSettings.DEFAULT_PARALLEL,
     val includeBotProtected: Boolean = true,
-    val scanPreset: ScanPreset = ScanPreset.ALL,
+    val includeNsfw: Boolean = false,
+    val scanPreset: ScanPreset = ScanPreset.QUICK,
     val emailLookupMx: Boolean = true,
     val emailLookupGravatar: Boolean = true,
     val redactPiiOnShare: Boolean = false,
@@ -125,6 +126,7 @@ class WorkbenchViewModel(
         diskCache = diskCache,
         maxParallel = { appSettings.maxParallel },
         includeBotProtected = { appSettings.includeBotProtected },
+        includeNsfw = { appSettings.includeNsfw },
         scanPreset = { appSettings.scanPreset },
         emailLookupMx = { appSettings.emailLookupMx },
         emailLookupGravatar = { appSettings.emailLookupGravatar },
@@ -141,6 +143,7 @@ class WorkbenchViewModel(
             isOnline = networkMonitor.isOnline(),
             maxParallel = appSettings.maxParallel,
             includeBotProtected = appSettings.includeBotProtected,
+            includeNsfw = appSettings.includeNsfw,
             scanPreset = appSettings.scanPreset,
             emailLookupMx = appSettings.emailLookupMx,
             emailLookupGravatar = appSettings.emailLookupGravatar,
@@ -468,6 +471,11 @@ class WorkbenchViewModel(
     fun setIncludeBotProtected(value: Boolean) {
         appSettings.includeBotProtected = value
         _state.update { it.copy(includeBotProtected = value) }
+    }
+
+    fun setIncludeNsfw(value: Boolean) {
+        appSettings.includeNsfw = value
+        _state.update { it.copy(includeNsfw = value) }
     }
 
     fun setScanPreset(value: ScanPreset) {
@@ -985,6 +993,7 @@ class WorkbenchViewModel(
             it.copy(
                 maxParallel = appSettings.maxParallel,
                 includeBotProtected = appSettings.includeBotProtected,
+                includeNsfw = appSettings.includeNsfw,
                 scanPreset = appSettings.scanPreset,
                 emailLookupMx = appSettings.emailLookupMx,
                 emailLookupGravatar = appSettings.emailLookupGravatar,

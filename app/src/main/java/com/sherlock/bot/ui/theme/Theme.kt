@@ -73,8 +73,8 @@ private val AppTypography = Typography(
     titleLarge = TextStyle(
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Bold,
-        fontSize = 17.sp,
-        letterSpacing = 1.6.sp,
+        fontSize = 14.sp,
+        letterSpacing = 0.6.sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,

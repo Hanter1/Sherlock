@@ -7,20 +7,40 @@ import org.junit.Test
 class ScanSiteFilterTest {
 
     private val sites = listOf(
-        OsintSite("GitHub", "https://github.com/{user}", categories = listOf("dev")),
-        OsintSite("Telegram", "https://t.me/{user}", categories = listOf("social")),
-        OsintSite("VK", "https://vk.com/{user}", categories = listOf("social")),
-        OsintSite("Habr", "https://habr.com/{user}", categories = listOf("dev")),
-        OsintSite("OK.ru", "https://ok.ru/{user}", categories = listOf("social")),
+        OsintSite("GitHub", "https://github.com/{user}", categories = listOf("dev"), curated = true),
+        OsintSite("Telegram", "https://t.me/{user}", categories = listOf("social"), curated = true),
+        OsintSite("VK", "https://vk.com/{user}", categories = listOf("social"), curated = true),
+        OsintSite("Habr", "https://habr.com/{user}", categories = listOf("dev"), curated = true),
+        OsintSite("OK.ru", "https://ok.ru/{user}", categories = listOf("social"), curated = true),
         OsintSite("Twitch", "https://twitch.tv/{user}", categories = listOf("media", "gaming")),
         OsintSite("Instagram", "https://instagram.com/{user}", categories = listOf("social")),
         OsintSite("X", "https://x.com/{user}", categories = listOf("social")),
         OsintSite("Behance", "https://behance.net/{user}", categories = listOf("design")),
+        OsintSite("NSFW Site", "https://nsfw.example/{user}", categories = listOf("nsfw"), nsfw = true),
     )
 
     @Test
-    fun allIncludesCatalog() {
+    fun allIncludesCatalogExceptNsfwByDefault() {
         val filtered = ScanSiteFilter.filter(sites, includeBotProtected = true, preset = ScanPreset.ALL)
+        assertEquals(sites.size - 1, filtered.size)
+        assertTrue(filtered.none { it.nsfw })
+    }
+
+    @Test
+    fun quickUsesCurated() {
+        val filtered = ScanSiteFilter.filter(sites, includeBotProtected = true, preset = ScanPreset.QUICK)
+        assertEquals(setOf("GitHub", "Telegram", "VK", "Habr", "OK.ru"), filtered.map { it.name }.toSet())
+    }
+
+    @Test
+    fun nsfwIncludedWhenEnabled() {
+        val filtered = ScanSiteFilter.filter(
+            sites,
+            includeBotProtected = true,
+            preset = ScanPreset.ALL,
+            includeNsfw = true,
+        )
+        assertTrue(filtered.any { it.name == "NSFW Site" })
         assertEquals(sites.size, filtered.size)
     }
 
@@ -58,6 +78,5 @@ class ScanSiteFilterTest {
         val filtered = ScanSiteFilter.filter(sites, includeBotProtected = true, preset = ScanPreset.ALL)
         assertTrue(filtered.any { it.name == "Instagram" })
         assertTrue(filtered.any { it.name == "X" })
-        assertEquals(sites.size, filtered.size)
     }
 }

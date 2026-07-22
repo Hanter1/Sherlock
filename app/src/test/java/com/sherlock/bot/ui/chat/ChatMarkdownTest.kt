@@ -23,6 +23,21 @@ class ChatMarkdownTest {
         assertEquals(1, links.size)
         val url = (links.first().item as LinkAnnotation.Url).url
         assertEquals("https://github.com/durov", url)
+        assertTrue(annotated.text.contains("github.com"))
+        assertFalse(annotated.text.contains("https://github.com/durov"))
+    }
+
+    @Test
+    fun markdownLabelLinkShowsLabelNotUrl() {
+        val annotated = ChatMarkdown.toAnnotatedString(
+            "• [Google BY](https://www.google.by/search?q=test&hl=be)",
+        )
+        val links = annotated.getLinkAnnotations(0, annotated.length)
+        assertEquals(1, links.size)
+        assertEquals("https://www.google.by/search?q=test&hl=be", (links.first().item as LinkAnnotation.Url).url)
+        assertTrue(annotated.text.contains("Google BY"))
+        assertFalse(annotated.text.contains("https://"))
+        assertEquals("• Google BY", ChatMarkdown.plainVisible("• [Google BY](https://www.google.by/search?q=test&hl=be)"))
     }
 
     @Test

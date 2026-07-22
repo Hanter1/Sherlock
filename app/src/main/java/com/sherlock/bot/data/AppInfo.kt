@@ -55,6 +55,9 @@ object AppInfo {
                 appendLine("• sha256: ${catalog.sha256.take(12)}…")
             }
             appendLine()
+            appendLine("Username-скан: каталог на базе sherlock-project/sherlock (MIT);")
+            appendLine("движок нативный Kotlin. Пресет «Быстрый» / «Sherlock Full».")
+            appendLine()
             appendLine("Справочник DEF (def_codes.json):")
             appendLine("• updated: $defUpdated")
             appendLine("• кодов: $defCodes")
@@ -62,7 +65,7 @@ object AppInfo {
             appendLine("Упор на Беларусь: +375, Google BY / Yandex BY, язык be-BY.")
             appendLine("Только открытые источники. Без утечек и закрытых баз.")
             appendLine("Кэш ников: сессия + диск (24 ч). Повтор без кэша даёт Δ с прошлого скана.")
-            appendLine("Настройки: параллелизм, Instagram/X, remote-каталог, скрытие в недавних.")
+            appendLine("Настройки: параллелизм, Instagram/X, NSFW, remote-каталог.")
         }.trim()
     }
 }
