@@ -77,6 +77,9 @@ class PhoneAnalyzerTest {
         assertTrue(report.body.contains("+375291234567"))
         assertTrue(report.body.contains("Префикс РБ: 29"))
         assertTrue(report.body.contains("A1") || report.body.contains("МТС"))
+        assertTrue(report.body.contains("wa.me") || report.body.contains("WhatsApp"))
+        assertTrue(report.body.contains("Truecaller") || report.body.contains("утечка"))
+        assertTrue(!report.body.contains("намеренно"))
     }
 
     @Test

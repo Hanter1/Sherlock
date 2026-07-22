@@ -87,8 +87,13 @@ object EmailAnalyzer {
                 }
             }
             appendLine()
-            appendLine("Полный «пробив» по утечкам в приложение не встроен.")
-            appendLine("Подсказка: проверьте ник на том же имени через «Поиск по нику».")
+            val mailQ = java.net.URLEncoder.encode(parsed.email, java.nio.charset.StandardCharsets.UTF_8.name())
+            appendLine("• [Google · email](https://www.google.com/search?q=$mailQ)")
+            appendLine("• [Google · leak](https://www.google.com/search?q=$mailQ+leak+OR+breach+OR+утечка)")
+            appendLine("• [Have I Been Pwned](https://haveibeenpwned.com/)")
+            appendLine()
+            appendLine("Закрытые базы сливов в APK не подключены — только публичные страницы/поиск.")
+            appendLine("Подсказка: проверьте ник из локальной части email через «Поиск по нику».")
         }.trim()
 
         return OsintResult.InfoReport(

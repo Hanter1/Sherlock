@@ -1,7 +1,13 @@
 package com.sherlock.bot.data
 
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+
 /**
  * Phone normalization with Belarus (+375) first, then +7 DEF, +380 / +1 / +44.
+ *
+ * Report includes open-web entry points (search / messengers / public directories).
+ * Does **not** call closed leak DBs or paid «пробив» APIs.
  */
 object PhoneAnalyzer {
 
@@ -36,7 +42,6 @@ object PhoneAnalyzer {
         val digits = raw.filter { it.isDigit() }
         return when {
             digits.startsWith("375") && digits.length == 12 -> digits
-            // local 8 0XX … sometimes written without +375
             digits.startsWith("80") && digits.length == 11 -> "375${digits.drop(2)}"
             else -> null
         }?.takeIf { it.startsWith("375") && it.length == 12 }
@@ -59,7 +64,6 @@ object PhoneAnalyzer {
             )
         }
 
-        // Ukraine: 380 + 9 digits
         if (digits.startsWith("380") && digits.length == 12) {
             return ParsedPhone(
                 e164 = "+$digits",
@@ -156,25 +160,94 @@ object PhoneAnalyzer {
                 }
                 parsed.regionNote?.let { appendLine(it) }
                 appendLine()
-                appendLine("Что проверено здесь:")
-                appendLine("• нормализация и страна по префиксу")
+                appendLine("Локально:")
+                appendLine("• нормализация E.164 и страна по префиксу")
                 if (isBy) {
                     appendLine("• эвристика мобильных префиксов Беларуси (25/29/33/44)")
                 } else if (parsed.defCode != null) {
                     appendLine("• справочник DEF из assets/def_codes.json")
                 }
                 appendLine()
-                appendLine("Чего нет в приложении (намеренно):")
-                appendLine("• ФИО владельца, утечки, GetContact и закрытые базы")
+                appendOpenContactLinks(parsed)
+                appendLine()
+                appendOpenWebIntel(parsed)
                 appendLine()
                 val note = DefDirectory.noteText()
                 if (note.isNotBlank() && parsed.defCode != null && !isBy) {
                     appendLine(note)
                     appendLine()
                 }
+                appendLine("Закрытые базы и платный «пробив» в приложение не подключены.")
+                appendLine("Ниже — только открытые страницы/поиск по уже публичным следам в сети.")
             }.trim(),
         )
     }
 
     fun guessRuOperator(defCode: String): String = DefDirectory.lookup(defCode)
+
+    /** Display / search variants of the same number. */
+    fun searchVariants(parsed: ParsedPhone): List<String> {
+        val d = parsed.digits
+        val spaced = when {
+            parsed.countryCode == "375" && d.length == 12 ->
+                "+375 ${d.substring(3, 5)} ${d.substring(5, 8)}-${d.substring(8, 10)}-${d.substring(10)}"
+            parsed.countryCode == "7" && d.length == 11 ->
+                "+7 ${d.substring(1, 4)} ${d.substring(4, 7)}-${d.substring(7, 9)}-${d.substring(9)}"
+            else -> parsed.e164
+        }
+        return listOf(parsed.e164, d, spaced).distinct()
+    }
+
+    private fun StringBuilder.appendOpenContactLinks(parsed: ParsedPhone) {
+        val digits = parsed.digits
+        appendLine("—— Мессенджеры / публичные профили ——")
+        appendLine("• [WhatsApp](https://wa.me/$digits)")
+        appendLine("• [Telegram](https://t.me/+$digits)")
+        // Truecaller public web search (not a private API dump).
+        val tcCountry = when (parsed.countryCode) {
+            "375" -> "by"
+            "7" -> "ru"
+            "380" -> "ua"
+            "1" -> "us"
+            "44" -> "gb"
+            else -> "ru"
+        }
+        appendLine("• [Truecaller (web)](https://www.truecaller.com/search/$tcCountry/$digits)")
+    }
+
+    private fun StringBuilder.appendOpenWebIntel(parsed: ParsedPhone) {
+        val primary = q(parsed.e164)
+        val digitsQ = q(parsed.digits)
+        val pretty = searchVariants(parsed).lastOrNull()?.let { q(it) } ?: primary
+
+        appendLine("—— ФИО и упоминания в открытой сети ——")
+        appendLine("Поиск по номеру (часто всплывают ФИО, объявления, соцсети):")
+        if (parsed.countryCode == "375") {
+            appendLine("• [Google BY](https://www.google.by/search?q=$primary&hl=be)")
+            appendLine("• [Yandex BY](https://yandex.by/search/?text=$primary)")
+        } else {
+            appendLine("• [Google](https://www.google.com/search?q=$primary)")
+            appendLine("• [Yandex](https://yandex.ru/search/?text=$primary)")
+        }
+        appendLine("• [Google (цифры)](https://www.google.com/search?q=$digitsQ)")
+        appendLine("• [VK](https://vk.com/search?c%5Bq%5D=$primary&c%5Bsection%5D=people)")
+
+        appendLine()
+        appendLine("—— Утечки / дампы, уже в открытом индексе ——")
+        appendLine("Не закрытая база внутри APK — публичный поиск по следам в сети:")
+        val leakQ = q("${parsed.e164} утечка OR leak OR breach OR dump")
+        val pasteQ = q("${parsed.digits} site:pastebin.com OR \"password\" OR dump")
+        if (parsed.countryCode == "375") {
+            appendLine("• [Yandex · утечка](https://yandex.by/search/?text=$leakQ)")
+            appendLine("• [Google · утечка](https://www.google.by/search?q=$leakQ&hl=be)")
+        } else {
+            appendLine("• [Yandex · утечка](https://yandex.ru/search/?text=$leakQ)")
+            appendLine("• [Google · утечка](https://www.google.com/search?q=$leakQ)")
+        }
+        appendLine("• [Google · paste/dumps](https://www.google.com/search?q=$pasteQ)")
+        appendLine("• [DuckDuckGo](https://duckduckgo.com/?q=$pretty)")
+    }
+
+    private fun q(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8.name())
 }
