@@ -595,7 +595,16 @@ class OsintEngine(
             return if (site.okBodyMarkers.any { marker -> text.contains(marker, ignoreCase = true) }) {
                 CheckOutcome.Found(site.name, url, baseDiag)
             } else if (code in 200..299) {
-                CheckOutcome.Missing(site.name)
+                // Antibot shells often return 200 without a real profile — don't show a fake "FOUND" link.
+                if (site.name in ANTIBOT_PROFILE_SITES) {
+                    CheckOutcome.Error(
+                        site = site.name,
+                        reason = "login wall / antibot",
+                        diagnostics = baseDiag.withDetail("login wall / antibot"),
+                    )
+                } else {
+                    CheckOutcome.Missing(site.name)
+                }
             } else {
                 CheckOutcome.Error(
                     site = site.name,
@@ -619,12 +628,22 @@ class OsintEngine(
         }
 
         return when {
-            code in site.okCodes || code in 200..299 -> CheckOutcome.Uncertain(
-                site = site.name,
-                url = url,
-                reason = "нет маркера профиля",
-                diagnostics = baseDiag.withDetail("нет маркера профиля"),
-            )
+            code in site.okCodes || code in 200..299 -> {
+                if (site.name in ANTIBOT_PROFILE_SITES) {
+                    CheckOutcome.Error(
+                        site = site.name,
+                        reason = "login wall / antibot",
+                        diagnostics = baseDiag.withDetail("login wall / antibot"),
+                    )
+                } else {
+                    CheckOutcome.Uncertain(
+                        site = site.name,
+                        url = url,
+                        reason = "нет маркера профиля",
+                        diagnostics = baseDiag.withDetail("нет маркера профиля"),
+                    )
+                }
+            }
             code == 404 -> CheckOutcome.Missing(site.name)
             else -> CheckOutcome.Error(
                 site = site.name,
@@ -819,6 +838,9 @@ class OsintEngine(
         private const val INITIAL_RETRY_DELAY_MS = 400L
         private const val MAX_RETRY_DELAY_MS = 3500L
         private val RETRYABLE_CODES = setOf(408, 425, 429, 500, 502, 503, 504)
+
+        /** Public HTML is usually a login/JS shell — never treat bare 200 as a profile hit. */
+        internal val ANTIBOT_PROFILE_SITES: Set<String> = setOf("Instagram", "X")
 
         internal fun countRedirects(response: Response): Int {
             var count = 0

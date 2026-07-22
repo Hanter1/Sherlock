@@ -80,7 +80,7 @@ data class WorkbenchUiState(
     val celebrateScan: Boolean = false,
     val scanProgress: ScanProgressUi? = null,
     val maxParallel: Int = AppSettings.DEFAULT_PARALLEL,
-    val includeBotProtected: Boolean = true,
+    val includeBotProtected: Boolean = false,
     val includeNsfw: Boolean = false,
     val scanPreset: ScanPreset = ScanPreset.QUICK,
     val emailLookupMx: Boolean = true,

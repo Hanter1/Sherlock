@@ -89,6 +89,7 @@ import com.sherlock.bot.data.AppSettings
 import com.sherlock.bot.data.BotAction
 import com.sherlock.bot.data.ChatMessage
 import com.sherlock.bot.data.ChatSearch
+import com.sherlock.bot.data.ExternalLinks
 import com.sherlock.bot.data.JournalCase
 import com.sherlock.bot.data.JournalCases
 import com.sherlock.bot.data.ScanPreset
@@ -735,6 +736,7 @@ private fun ReportCard(
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
+    val context = LocalContext.current
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
@@ -812,6 +814,7 @@ private fun ReportCard(
                         linkColor = Cabinet.Accent,
                         codeColor = Cabinet.Text,
                         codeBackground = Cabinet.BgElevated,
+                        onLinkClick = { url -> ExternalLinks.open(context, url) },
                     ),
                     style = MaterialTheme.typography.bodyMedium.copy(
                         color = Cabinet.Text,
@@ -1122,7 +1125,7 @@ private fun SettingsDialog(
                     }
                 }
                 SettingsSwitch(
-                    label = "Instagram / X в скане",
+                    label = "Instagram / X в скане (часто antibot)",
                     checked = state.includeBotProtected,
                     onCheckedChange = viewModel::setIncludeBotProtected,
                 )

@@ -3787,7 +3787,9 @@
         "AuthLoginModule",
         "challenge_required",
         "\"status\":\"fail\"",
-        "LoginAndSignupPage"
+        "LoginAndSignupPage",
+        "\"force_login\"",
+        "accounts/login"
       ],
       "errorBodyMarkers": [
         "Sorry, this page isn't available",
@@ -3796,9 +3798,8 @@
       ],
       "okBodyMarkers": [
         "profilePage_",
-        "\"username\"",
-        "ProfilePage",
-        "biography"
+        "\"user\":{\"pk\"",
+        "logging_page_id\":\"profilePage_"
       ],
       "useHead": false,
       "categories": [

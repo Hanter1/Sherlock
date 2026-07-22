@@ -229,6 +229,20 @@ class OsintEngineClassifyTest {
     }
 
     @Test
+    fun instagramWithoutProfileMarkersIsErrorNotUncertain() {
+        val site = OsintSite(
+            name = "Instagram",
+            urlTemplate = "https://www.instagram.com/{user}/",
+            errorCodes = emptySet(),
+            okBodyMarkers = listOf("profilePage_"),
+            blockBodyMarkers = listOf("loginForm"),
+        )
+        val shell = engine.classify(site, "https://www.instagram.com/x/", 200, "<title>Instagram</title>")
+        assertTrue(shell is OsintEngine.CheckOutcome.Error)
+        assertTrue((shell as OsintEngine.CheckOutcome.Error).reason.contains("antibot"))
+    }
+
+    @Test
     fun bundledCatalogIsSherlockScale() {
         val file = java.io.File("src/main/assets/osint_sites.json")
         assertTrue(file.exists())

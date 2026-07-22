@@ -18,9 +18,9 @@ class AppSettings(context: Context) {
             prefs.edit().putInt(KEY_PARALLEL, safe).apply()
         }
 
-    /** When false, Instagram / X are skipped during username scans. */
+    /** When false, Instagram / X are skipped during username scans. Default off — IG deep-links are unreliable. */
     var includeBotProtected: Boolean
-        get() = prefs.getBoolean(KEY_BOT_PROTECTED, true)
+        get() = prefs.getBoolean(KEY_BOT_PROTECTED, false)
         set(value) {
             prefs.edit().putBoolean(KEY_BOT_PROTECTED, value).apply()
         }

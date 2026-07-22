@@ -26,6 +26,7 @@ object ChatMarkdown {
         linkColor: Color = Color(0xFFC9A227),
         codeColor: Color = Color(0xFFE8D5A3),
         codeBackground: Color = Color(0x33415566),
+        onLinkClick: ((String) -> Unit)? = null,
     ): AnnotatedString = buildAnnotatedString {
         var cursor = 0
         for (match in tokenRegex.findAll(text)) {
@@ -37,7 +38,7 @@ object ChatMarkdown {
                 token.startsWith('[') && token.contains("](http") -> {
                     val label = token.substringAfter('[').substringBefore(']')
                     val url = token.substringAfter("](").substringBefore(')')
-                    appendMarkdownLink(label, url, linkColor)
+                    appendMarkdownLink(label, url, linkColor, onLinkClick)
                 }
                 token.startsWith('`') && token.endsWith('`') && token.length >= 2 -> {
                     val code = token.substring(1, token.lastIndex)
@@ -61,7 +62,7 @@ object ChatMarkdown {
                 token.startsWith("http") -> {
                     val url = token.trimEnd('.', ',', ';', ')', ']')
                     val trailing = token.removePrefix(url)
-                    appendMarkdownLink(shortenUrlLabel(url), url, linkColor)
+                    appendMarkdownLink(shortenUrlLabel(url), url, linkColor, onLinkClick)
                     if (trailing.isNotEmpty()) append(trailing)
                 }
                 else -> append(token)
@@ -101,19 +102,25 @@ object ChatMarkdown {
         label: String,
         url: String,
         linkColor: Color,
+        onLinkClick: ((String) -> Unit)?,
     ) {
-        withLink(
+        val styles = TextLinkStyles(
+            style = SpanStyle(
+                color = linkColor,
+                textDecoration = TextDecoration.Underline,
+                fontWeight = FontWeight.Medium,
+            ),
+        )
+        val annotation = if (onLinkClick != null) {
             LinkAnnotation.Url(
                 url = url,
-                styles = TextLinkStyles(
-                    style = SpanStyle(
-                        color = linkColor,
-                        textDecoration = TextDecoration.Underline,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                ),
-            ),
-        ) {
+                styles = styles,
+                linkInteractionListener = { onLinkClick(url) },
+            )
+        } else {
+            LinkAnnotation.Url(url = url, styles = styles)
+        }
+        withLink(annotation) {
             append(label)
         }
     }
