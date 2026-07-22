@@ -1,54 +1,65 @@
-# Sherlock Bot
+<p align="center">
+  <img src="docs/assets/banner.png" alt="Sherlock Bot" width="100%" />
+</p>
 
-Мобильное Android-приложение OSINT: тёмный кабинет (режимы, запрос, отчёт, журнал), открытые источники.
+<p align="center">
+  <strong>Android OSINT-кабинет</strong> — ник · телефон · email · ФИО<br/>
+  только открытые источники · на устройстве · без закрытых баз
+</p>
 
-## Что умеет
+<p align="center">
+  <a href="https://github.com/Hanter1/Sherlock/actions/workflows/ci.yml"><img src="https://github.com/Hanter1/Sherlock/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/Hanter1/Sherlock/releases"><img src="https://img.shields.io/github/v/release/Hanter1/Sherlock?include_prereleases&label=release" alt="Release" /></a>
+  <img src="https://img.shields.io/badge/Android-API%2026%2B-0A1220?logo=android" alt="Android API 26+" />
+  <img src="https://img.shields.io/badge/Kotlin-Compose-E11D30" alt="Kotlin Compose" />
+</p>
 
-- **Кабинет** — тёмный console UI: вкладки режимов, поле запроса, карточка отчёта, журнал
-- **Поиск по никнейму** — 40+ площадок с категориями и `rateLimitMs` (`osint_sites.json`)
-- **Сравнение ников** — `/compare a b`; **Δ с прошлого скана** при «Повторить без кэша»
-- **Телефон** — приоритет **Беларусь `+375`**, также `+7` / `+380` / `+1` / `+44`
-- **Email** — MX + SPF/DMARC (DoH) + Gravatar; согласие + тумблеры в настройках
-- **Share/copy** — предупреждение при ПДн; опция маскирования телефона/email
-- **Каталог v6** — `okBodyMarkers` или `trustHttpStatus` у всех площадок (меньше ложных FOUND)
-- **ФИО** — Google BY / Yandex BY / VK
-- **Remote-каталог** — URL в настройках + sha256/version без нового APK
-- **Поиск по истории** — лупа в шапке; закрепление последнего отчёта
-- **Дисклеймер** — при первом запуске; скрытие в «Недавних» (FLAG_SECURE)
-- **Отмена скана** — кнопка «Стоп» во время проверки ника
-- **Сводка + фильтры** — найденные / неуверенно / нет / ошибки + группировка по категориям
-- **Добить ошибки** — повтор только ERROR + UNCERTAIN площадок
-- **История** — шифрование на диске (EncryptedFile); опция «не сохранять»
-- **Повторить без кэша** — принудительный рескан ника
-- **Экспорт** — Markdown / JSON с `confidence` (confirmed / uncertain)
-- **Настройки** — параллелизм, пресет площадок (Все/Соцсети/Dev/Медиа/РБ), Instagram/X, email, история, remote-каталог
-- **Remote-каталог** — HTTPS + allowlist; опционально ECDSA-подпись (`signature`); скрипт `scripts/sign_catalog.py`
-- **Журнал дел** — группировка по дням, тип (ник/email/…), удаление одного дела
-- **CI** — unit-тесты + `lintDebug` + debug APK; MockWebServer для cancel/retry
-- **История чата** — журнал запросов на устройстве; очистка из журнала / `/clear`
-- **Поделиться / Копировать** — системный шаринг или буфер обмена
-- **Офлайн** — индикатор сети в шапке; ник/email требуют сеть; телефон и ФИО локально
-- **Кэш ника** — сессия + диск (TTL 24 ч); в отчёте и настройках — возраст / остаток TTL
-- **Очередь ников** — `/username a b c` или через запятую (до 5 подряд)
-- **Retry** — повтор при 429/5xx + per-host rate limit (очередь по хосту)
-- **Диагностика HTTP** — код / редиректы / причина в отчёте (UNCERTAIN, ERROR, rate limited)
-- **Уведомление** — скан завершён в фоне (`POST_NOTIFICATIONS`)
-- **О приложении** — версия APK + версии каталогов (кнопка ℹ / `/about`)
+<p align="center">
+  <a href="https://github.com/Hanter1/Sherlock/releases/latest">Скачать APK</a>
+  ·
+  <a href="https://github.com/Hanter1/Sherlock/wiki">Wiki</a>
+  ·
+  <a href="#сборка">Сборка</a>
+</p>
 
-CI: GitHub Actions (`.github/workflows/ci.yml`) — `testDebugUnitTest` + `assembleDebug` (JDK и SDK ставятся в runner; локально не обязательны).  
-Weekly catalog probe: `.github/workflows/catalog-probe.yml` (`scripts/probe_catalog.py`).
+---
 
-Каталоги (без переписывания Kotlin):
-- площадки: `app/src/main/assets/osint_sites.json` (`categories`: dev / social / gaming / media / design / creator)
-- DEF: `app/src/main/assets/def_codes.json`
+## Зачем
 
-Приложение **не** подключается к закрытым базам и утечкам. Это легальный OSINT-клиент по открытым источникам.
+Sherlock Bot — тёмный console-UI для быстрых проверок по публичным страницам: ник на 40+ площадках, разбор телефона (BY/RU/UA/…), email (MX/SPF/DMARC/Gravatar), поисковые запросы по ФИО. Всё локально на телефоне; каталог площадок обновляется без переписывания Kotlin.
+
+<p align="center">
+  <img src="docs/assets/mock-workbench.png" alt="Workbench" width="280" />
+  &nbsp;
+  <img src="docs/assets/mock-report.png" alt="Report" width="280" />
+</p>
+
+## Возможности
+
+| | |
+|---|---|
+| **Никнейм** | Параллельный скан, пресеты, фильтры FOUND / UNCERTAIN / ERROR, «добить ошибки», Δ с прошлого скана |
+| **Телефон / Email / ФИО** | Беларусь `+375` в приоритете; MX + политика DNS; Google/Yandex/VK |
+| **Кабинет** | Журнал дел, поиск по истории, закрепление отчёта, экспорт MD/JSON |
+| **Надёжность** | Per-host rate limit, retry 429/5xx, HTTP-диагностика, уведомление о конце скана |
+| **Каталог** | `osint_sites.json` + remote HTTPS (allowlist, sha256, опционально ECDSA) |
+
+Полный список — в [Wiki → Usage](https://github.com/Hanter1/Sherlock/wiki/Usage).
+
+## Быстрый старт
+
+1. Установите APK из [Releases](https://github.com/Hanter1/Sherlock/releases/latest) (debug-сборка помечена в notes).
+2. Примите дисклеймер.
+3. Режим **Никнейм** → `durov` или команда `/username durov`.
+4. Стоп — отмена mid-scan; в фоне придёт уведомление о готовности.
+
+Примеры команд: `/compare a b` · `/username a b c` (очередь до 5) · `/clear` · `/about`.
 
 ## Стек
 
-Kotlin · Jetpack Compose · OkHttp · Coroutines
+Kotlin · Jetpack Compose · OkHttp · Coroutines · EncryptedFile
 
-## Сборка debug APK
+## Сборка
 
 Нужны JDK 17 и Android SDK.
 
@@ -60,39 +71,23 @@ gradlew.bat assembleDebug
 
 APK: `app\build\outputs\apk\debug\app-debug.apk`
 
-```bat
-adb install -r app\build\outputs\apk\debug\app-debug.apk
-```
+Release (R8 + minify): скопируйте `keystore.properties.example` → `keystore.properties`, укажите `.jks`, затем `gradlew.bat assembleRelease`.
 
-## Сборка release (R8)
+Подробнее: [Wiki → Building](https://github.com/Hanter1/Sherlock/wiki/Building).
 
-Release включает minify + shrink resources.
+CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — unit-тесты, `lintDebug`, debug APK.  
+Каталог (недельный probe): [`scripts/probe_catalog.py`](scripts/probe_catalog.py).
 
-1. Создайте keystore (один раз):
+## Документация
 
-```bat
-keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias sherlock
-```
+- [Installation](https://github.com/Hanter1/Sherlock/wiki/Installation)
+- [Usage](https://github.com/Hanter1/Sherlock/wiki/Usage)
+- [Catalog](https://github.com/Hanter1/Sherlock/wiki/Catalog)
+- [Privacy & Ethics](https://github.com/Hanter1/Sherlock/wiki/Privacy-and-Ethics)
+- [Building](https://github.com/Hanter1/Sherlock/wiki/Building)
 
-2. Скопируйте `keystore.properties.example` → `keystore.properties` в корне репозитория и заполните пароли / путь к `.jks`.
-
-3. Соберите:
-
-```bat
-gradlew.bat assembleRelease
-```
-
-APK: `app\build\outputs\apk\release\app-release.apk`  
-(если `keystore.properties` нет — APK будет unsigned / потребуется подпись вручную).
-
-`keystore.properties` и `*.jks` в git не коммитятся.
-
-## Использование
-
-1. Откройте приложение
-2. Нажмите **Никнейм** / **Телефон** / **Email** / **ФИО** или введите команду `/username durov`
-3. Дождитесь отчёта в чате (ссылки кликабельны; markdown: `code`, *жирный*)
+Зеркало Wiki в репозитории: [`docs/wiki/`](docs/wiki/).
 
 ## Важно
 
-Используйте только для законных целей и с уважением к приватности. Авторы не несут ответственности за злоупотребление инструментом.
+Только законные цели и уважение к приватности. Приложение **не** подключается к закрытым базам и утечкам. Авторы не несут ответственности за злоупотребление.
