@@ -301,29 +301,112 @@ class OsintEngine(
     }
 
     fun analyzeFullName(raw: String): OsintResult.InfoReport {
-        val name = raw.trim().replace(Regex("\\s+"), " ")
-        val parts = name.split(" ")
-        if (parts.size < 2 || name.length < 5) {
-            return OsintResult.InfoReport(
+        val parsed = NameUsernameCandidates.parse(raw)
+            ?: return OsintResult.InfoReport(
                 title = "ФИО",
                 body = "Пришлите минимум фамилию и имя, например: `Иванов Иван` или `Кавалёў Аляксей`.",
             )
-        }
-        val query = URLEncoder.encode(name, StandardCharsets.UTF_8.name())
+        val nicks = NameUsernameCandidates.candidates(parsed)
+        val query = URLEncoder.encode(parsed.display, StandardCharsets.UTF_8.name())
         return OsintResult.InfoReport(
-            title = "ФИО · публичные ссылки",
+            title = "ФИО · подсказки",
             body = buildString {
-                appendLine("Запрос: *$name*")
-                appendLine()
-                appendLine("Открытые точки входа (акцент на РБ):")
-                appendLine("• [Google BY](https://www.google.by/search?q=$query&hl=be)")
-                appendLine("• [Yandex BY](https://yandex.by/search/?text=$query)")
-                appendLine("• [VK](https://vk.com/search?c%5Bq%5D=$query&c%5Bsection%5D=people)")
-                appendLine("• [Google](https://www.google.com/search?q=$query)")
-                appendLine()
-                appendLine("Только публичные поисковые ссылки — без закрытых реестров.")
+                appendLine("Запрос: *${parsed.display}*")
+                if (nicks.isNotEmpty()) {
+                    appendLine("Кандидаты ников: ${nicks.joinToString(" · ") { "`$it`" }}")
+                    appendLine("(для полного пробоя нужен онлайн-скан)")
+                    appendLine()
+                }
+                appendSearchLinks(query)
             }.trim(),
         )
+    }
+
+    /**
+     * Derives username candidates from ФИО and runs the same catalog scan as Sherlock-style nick search.
+     */
+    suspend fun searchByFullName(
+        raw: String,
+        onProgress: suspend (SiteCheckProgress) -> Unit = {},
+    ): OsintResult.InfoReport = withContext(Dispatchers.IO) {
+        val parsed = NameUsernameCandidates.parse(raw)
+            ?: return@withContext OsintResult.InfoReport(
+                title = "ФИО",
+                body = "Пришлите минимум фамилию и имя, например: `Иванов Иван` или `Кавалёў Аляксей`.",
+            )
+        val nicks = NameUsernameCandidates.candidates(parsed)
+        if (nicks.isEmpty()) {
+            return@withContext OsintResult.InfoReport(
+                title = "ФИО · ${parsed.display}",
+                body = buildString {
+                    appendLine("Не удалось построить латинские ники из «${parsed.display}».")
+                    appendLine()
+                    appendSearchLinks(URLEncoder.encode(parsed.display, StandardCharsets.UTF_8.name()))
+                }.trim(),
+            )
+        }
+
+        data class NickHits(val nick: String, val found: List<SiteHit>, val uncertain: List<SiteHit>)
+
+        val perNick = mutableListOf<NickHits>()
+        nicks.forEachIndexed { index, nick ->
+            val report = searchUsername(
+                raw = nick,
+                onProgress = { progress ->
+                    onProgress(
+                        progress.copy(
+                            username = nick,
+                            queueIndex = index + 1,
+                            queueTotal = nicks.size,
+                        ),
+                    )
+                },
+                bypassCache = false,
+            )
+            perNick += NickHits(nick, report.found, report.uncertain)
+        }
+
+        val withHits = perNick.filter { it.found.isNotEmpty() || it.uncertain.isNotEmpty() }
+        val query = URLEncoder.encode(parsed.display, StandardCharsets.UTF_8.name())
+        OsintResult.InfoReport(
+            title = "ФИО · ${parsed.display}",
+            body = buildString {
+                appendLine("Запрос: *${parsed.display}*")
+                appendLine("Ники (как Sherlock): ${nicks.joinToString(" · ") { "`$it`" }}")
+                appendLine()
+                if (withHits.isEmpty()) {
+                    appendLine("Подтверждённых публичных профилей по кандидатам не найдено.")
+                    appendLine()
+                } else {
+                    appendLine("—— Найденные / вероятные аккаунты ——")
+                    for (block in withHits) {
+                        appendLine()
+                        appendLine("Ник `${block.nick}`")
+                        if (block.found.isNotEmpty()) {
+                            block.found.forEach { hit ->
+                                appendLine("• [${hit.site}](${hit.url})")
+                            }
+                        }
+                        if (block.uncertain.isNotEmpty()) {
+                            appendLine("Неуверенно:")
+                            block.uncertain.take(8).forEach { hit ->
+                                appendLine("• [${hit.site}](${hit.url})")
+                            }
+                        }
+                    }
+                    appendLine()
+                }
+                appendSearchLinks(query)
+            }.trim(),
+        )
+    }
+
+    private fun StringBuilder.appendSearchLinks(query: String) {
+        appendLine("—— Поиск по ФИО в сети ——")
+        appendLine("• [Google BY](https://www.google.by/search?q=$query&hl=be)")
+        appendLine("• [Yandex BY](https://yandex.by/search/?text=$query)")
+        appendLine("• [VK люди](https://vk.com/search?c%5Bq%5D=$query&c%5Bsection%5D=people)")
+        appendLine("• [Google](https://www.google.com/search?q=$query)")
     }
 
     private suspend fun checkSite(site: OsintSite, username: String): CheckOutcome {

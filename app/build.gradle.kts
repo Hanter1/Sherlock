@@ -14,8 +14,8 @@ android {
         applicationId = "com.sherlock.bot"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.15.0"
+        versionCode = 17
+        versionName = "1.15.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

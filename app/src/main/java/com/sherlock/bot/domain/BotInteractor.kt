@@ -4,6 +4,7 @@ import com.sherlock.bot.data.BotAction
 import com.sherlock.bot.data.CacheAge
 import com.sherlock.bot.data.ChatHistoryCodec
 import com.sherlock.bot.data.ChatMessage
+import com.sherlock.bot.data.NameUsernameCandidates
 import com.sherlock.bot.data.OsintCatalog
 import com.sherlock.bot.data.OsintEngine
 import com.sherlock.bot.data.OsintResult
@@ -84,7 +85,7 @@ class BotInteractor(
             /compare <ник1> <ник2> — общие / только A / только B
             /phone <номер> — Беларусь +375 (приоритет), также +7/+380/+1/+44
             /email <почта> — MX + SPF/DMARC + Gravatar (после согласия; тумблеры в настройках)
-            /name <ФИО> — поиск Google BY / Yandex BY / VK
+            /name <ФИО> — ники из ФИО + скан каталога (как Sherlock) + Google/Yandex/VK
             /clear — очистить историю чата
             /about — версия приложения и каталогов
             /settings — параллелизм, пресет, кэш, remote-каталог
@@ -103,7 +104,10 @@ class BotInteractor(
         )
         SearchMode.PHONE -> bot("Пришлите телефон. Пример РБ: `+375291234567` (также +7 / +380 / +1 / +44)")
         SearchMode.EMAIL -> bot("Пришлите email. Пример: `name@mail.ru`")
-        SearchMode.FULL_NAME -> bot("Пришлите ФИО. Пример: `Іваноў Іван` или `Иванов Иван`")
+        SearchMode.FULL_NAME -> bot(
+            "Пришлите ФИО. Пример: `Иванов Иван` или `Кавалёў Аляксей`.\n" +
+                "Соберу ники (ivanov, ivan_ivanov…) и прогоню по каталогу площадок.",
+        )
         SearchMode.COMPARE -> bot("Пришлите два ника через пробел. Пример: `durov telegram`")
         SearchMode.NONE -> help()
     }
@@ -114,7 +118,7 @@ class BotInteractor(
     )
 
     fun offlineMessage(): ChatMessage = bot(
-        text = "Нет сети. Подключитесь к интернету и повторите запрос.\n\nОфлайн доступны: /phone и /name (локально).",
+        text = "Нет сети. Подключитесь к интернету и повторите запрос.\n\nОфлайн доступен: /phone.",
         actions = mainMenu(),
     )
 
@@ -172,13 +176,16 @@ class BotInteractor(
                 return if (arg.isBlank()) {
                     listOf(askFor(SearchMode.FULL_NAME)) to SearchMode.FULL_NAME
                 } else {
-                    listOf(formatResult(osint.analyzeFullName(arg))) to SearchMode.NONE
+                    requireOnline()?.let { return listOf(it) to SearchMode.NONE }
+                    handleFullNameArg(arg, onScanProgress)
                 }
             }
         }
 
         val mode = pendingMode.takeIf { it != SearchMode.NONE } ?: QueryClassifier.detectMode(trimmed)
-        if (mode == SearchMode.USERNAME || mode == SearchMode.EMAIL || mode == SearchMode.COMPARE) {
+        if (mode == SearchMode.USERNAME || mode == SearchMode.EMAIL || mode == SearchMode.COMPARE ||
+            mode == SearchMode.FULL_NAME
+        ) {
             requireOnline()?.let { return listOf(it) to SearchMode.NONE }
         }
 
@@ -191,7 +198,7 @@ class BotInteractor(
                 SearchMode.USERNAME -> return handleUsernameArg(trimmed, onScanProgress)
                 SearchMode.PHONE -> osint.analyzePhone(trimmed)
                 SearchMode.EMAIL -> osint.analyzeEmail(trimmed)
-                SearchMode.FULL_NAME -> osint.analyzeFullName(trimmed)
+                SearchMode.FULL_NAME -> return handleFullNameArg(trimmed, onScanProgress)
                 SearchMode.COMPARE, SearchMode.NONE -> null
             }
         }.fold(
@@ -230,6 +237,26 @@ class BotInteractor(
         "report_found", "report_no_errors", "report_full" -> null
         "rescan", "rescan_errors", "export_md", "export_json", "pin_report" -> null
         else -> help() to SearchMode.NONE
+    }
+
+    private suspend fun handleFullNameArg(
+        arg: String,
+        onScanProgress: suspend (SiteCheckProgress) -> Unit,
+    ): Pair<List<ChatMessage>, SearchMode> {
+        val parsed = NameUsernameCandidates.parse(arg)
+        if (parsed == null) {
+            return listOf(
+                bot("Нужны фамилия и имя. Пример: `Иванов Иван` или `Кавалёў Аляксей`."),
+            ) to SearchMode.FULL_NAME
+        }
+        val nicks = NameUsernameCandidates.candidates(parsed)
+        if (nicks.isEmpty()) {
+            return listOf(formatResult(osint.analyzeFullName(arg))) to SearchMode.NONE
+        }
+        val nickList = nicks.joinToString(" · ") { "`$it`" }
+        val header = bot("ФИО *${parsed.display}* → сканирую ники: $nickList")
+        val report = osint.searchByFullName(arg, onScanProgress)
+        return listOf(header, formatResult(report)) to SearchMode.NONE
     }
 
     private suspend fun handleCompareArg(

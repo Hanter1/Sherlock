@@ -39,7 +39,7 @@ Sherlock Bot — тёмный console-UI для быстрых проверок 
 | | |
 |---|---|
 | **Никнейм** | Каталог на базе [sherlock-project](https://github.com/sherlock-project/sherlock) (~480): пресеты Быстрый / Sherlock Full, фильтры, Δ, «добить ошибки» |
-| **Телефон / Email / ФИО** | Беларусь `+375` в приоритете; MX + политика DNS; Google/Yandex/VK |
+| **Телефон / Email / ФИО** | Беларусь `+375`; MX + DNS; ФИО → ники + скан каталога + Google/Yandex/VK |
 | **Кабинет** | Журнал дел, поиск по истории, закрепление отчёта, экспорт MD/JSON |
 | **Надёжность** | Per-host rate limit, retry 429/5xx, HTTP-диагностика, уведомление о конце скана |
 | **Каталог** | `osint_sites.json` v7 (MIT upstream + curated) · remote HTTPS · ECDSA |
