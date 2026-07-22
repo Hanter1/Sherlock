@@ -36,6 +36,11 @@ sealed class OsintResult {
         val fromCache: Boolean = false,
         /** Human-readable Δ vs previous scan of the same nick (if any). */
         val previousDiff: String? = null,
+        /**
+         * HTTP looked like a hit, but the site has no profile markers —
+         * low-confidence (not a confirmed FOUND).
+         */
+        val uncertain: List<SiteHit> = emptyList(),
     ) : OsintResult()
 
     data class InfoReport(
@@ -52,6 +57,7 @@ data class SiteHit(
 
 enum class SiteCheckStatus {
     FOUND,
+    UNCERTAIN,
     MISSING,
     ERROR,
 }

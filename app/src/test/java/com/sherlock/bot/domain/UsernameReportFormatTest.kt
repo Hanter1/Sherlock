@@ -35,12 +35,29 @@ class UsernameReportFormatTest {
     }
 
     @Test
-    fun foundOnlyHidesErrors() {
-        val text = BotInteractor().formatUsernameReport(report, UsernameReportFilter.FOUND_ONLY).text
+    fun foundOnlyHidesErrorsAndUncertain() {
+        val withUncertain = report.copy(
+            uncertain = listOf(SiteHit("npm", "https://www.npmjs.com/~alice")),
+        )
+        val text = BotInteractor().formatUsernameReport(withUncertain, UsernameReportFilter.FOUND_ONLY).text
         assertTrue(text.contains("Фильтр: только найденные"))
         assertTrue(text.contains("GitHub"))
         assertFalse(text.contains("Недоступно / блок:"))
         assertFalse(text.contains("Instagram: blocked"))
+        assertFalse(text.contains("Неуверенно"))
+        assertFalse(text.contains("npm"))
+    }
+
+    @Test
+    fun fullReportShowsUncertainSection() {
+        val withUncertain = report.copy(
+            uncertain = listOf(SiteHit("npm", "https://www.npmjs.com/~alice")),
+        )
+        val message = BotInteractor().formatUsernameReport(withUncertain)
+        assertTrue(message.text.contains("неуверенно: 1"))
+        assertTrue(message.text.contains("Неуверенно (нет маркера профиля):"))
+        assertTrue(message.text.contains("npm"))
+        assertTrue(message.actions.any { it.id == "rescan_errors" })
     }
 
     @Test

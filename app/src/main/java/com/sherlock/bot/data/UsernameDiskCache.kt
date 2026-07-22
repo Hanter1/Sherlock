@@ -130,6 +130,19 @@ object UsernameReportCodec {
             )
             .put("notFound", JSONArray(report.notFound))
             .put("errors", JSONArray(report.errors))
+            .put(
+                "uncertain",
+                JSONArray().also { arr ->
+                    report.uncertain.forEach { hit ->
+                        arr.put(
+                            JSONObject()
+                                .put("site", hit.site)
+                                .put("url", hit.url)
+                                .put("categories", JSONArray(hit.categories)),
+                        )
+                    }
+                },
+            )
             .also { json ->
                 report.previousDiff?.let { json.put("previousDiff", it) }
             }
@@ -150,9 +163,24 @@ object UsernameReportCodec {
                 )
             }
         }
+        val uncertainArr = obj.optJSONArray("uncertain") ?: JSONArray()
+        val uncertain = buildList {
+            for (i in 0 until uncertainArr.length()) {
+                val hit = uncertainArr.getJSONObject(i)
+                val cats = hit.optJSONArray("categories")
+                add(
+                    SiteHit(
+                        site = hit.getString("site"),
+                        url = hit.getString("url"),
+                        categories = cats?.toStringList().orEmpty(),
+                    ),
+                )
+            }
+        }
         return OsintResult.UsernameReport(
             username = obj.getString("username"),
             found = found,
+            uncertain = uncertain,
             notFound = (obj.optJSONArray("notFound") ?: JSONArray()).toStringList(),
             errors = (obj.optJSONArray("errors") ?: JSONArray()).toStringList(),
             elapsedMs = obj.optLong("elapsedMs", 0L),

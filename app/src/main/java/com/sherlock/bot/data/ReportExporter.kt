@@ -13,12 +13,13 @@ import java.util.TimeZone
 object ReportExporter {
 
     fun toMarkdown(report: OsintResult.UsernameReport): String {
-        val total = report.found.size + report.notFound.size + report.errors.size
+        val total = report.found.size + report.uncertain.size + report.notFound.size + report.errors.size
         return buildString {
             appendLine("# Sherlock Bot — отчёт")
             appendLine()
             appendLine("- **Ник:** `${report.username}`")
             appendLine("- **Найдено:** ${report.found.size}")
+            appendLine("- **Неуверенно:** ${report.uncertain.size}")
             appendLine("- **Нет:** ${report.notFound.size}")
             appendLine("- **Ошибки:** ${report.errors.size}")
             appendLine("- **Всего площадок:** $total")
@@ -47,6 +48,14 @@ object ReportExporter {
                 appendLine("## Найдены")
                 appendLine()
                 appendLine("_Публичные профили не найдены._")
+                appendLine()
+            }
+            if (report.uncertain.isNotEmpty()) {
+                appendLine("## Неуверенно")
+                appendLine()
+                appendLine("_HTTP ок, но нет маркера профиля — возможны ложные срабатывания._")
+                appendLine()
+                report.uncertain.forEach { appendLine("- [${it.site}](${it.url})") }
                 appendLine()
             }
             if (report.errors.isNotEmpty()) {

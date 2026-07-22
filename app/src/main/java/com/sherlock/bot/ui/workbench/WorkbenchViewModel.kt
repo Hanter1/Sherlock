@@ -24,8 +24,10 @@ import com.sherlock.bot.data.ReportExporter
 import com.sherlock.bot.data.SearchMode
 import com.sherlock.bot.data.SiteCheckProgress
 import com.sherlock.bot.data.UsernameDiskCache
+import com.sherlock.bot.data.UsernameReportMerge
 import com.sherlock.bot.data.UsernameSessionCache
 import com.sherlock.bot.domain.BotInteractor
+import com.sherlock.bot.data.OsintResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -73,6 +75,7 @@ data class WorkbenchUiState(
     val maxParallel: Int = AppSettings.DEFAULT_PARALLEL,
     val includeBotProtected: Boolean = true,
     val hideInRecents: Boolean = true,
+    val persistHistory: Boolean = true,
     val usernameCacheEntries: Int = 0,
     val catalogUrl: String = "",
     val catalogSource: String = "asset",
@@ -122,6 +125,7 @@ class WorkbenchViewModel(
             maxParallel = appSettings.maxParallel,
             includeBotProtected = appSettings.includeBotProtected,
             hideInRecents = appSettings.hideInRecents,
+            persistHistory = appSettings.persistHistory,
             usernameCacheEntries = bot.usernameCacheSize(),
             showDisclaimer = !appSettings.disclaimerAccepted,
             pinnedMessageId = appSettings.pinnedMessageId,
@@ -200,6 +204,7 @@ class WorkbenchViewModel(
                 .debounce(400)
                 .collectLatest { (snapshot, loaded) ->
                     if (!loaded) return@collectLatest
+                    if (!appSettings.persistHistory) return@collectLatest
                     historyStore.save(snapshot)
                 }
         }
@@ -254,6 +259,19 @@ class WorkbenchViewModel(
     fun setHideInRecents(value: Boolean) {
         appSettings.hideInRecents = value
         _state.update { it.copy(hideInRecents = value) }
+    }
+
+    fun setPersistHistory(value: Boolean) {
+        appSettings.persistHistory = value
+        _state.update { it.copy(persistHistory = value) }
+        if (!value) {
+            viewModelScope.launch {
+                historyStore.clear()
+                _toastEvents.tryEmit("История на диске удалена")
+            }
+        } else {
+            _toastEvents.tryEmit("История снова сохраняется на диск")
+        }
     }
 
     fun onCatalogUrlChange(value: String) {
@@ -429,6 +447,18 @@ class WorkbenchViewModel(
                 }
                 runRescan(report.username)
             }
+            "rescan_errors" -> {
+                val reportId = reportIdForMessage(messageId)
+                val report = bot.reportFor(reportId) ?: run {
+                    _toastEvents.tryEmit("Нет отчёта для повтора")
+                    return
+                }
+                if (UsernameReportMerge.failedSiteNames(report).isEmpty()) {
+                    _toastEvents.tryEmit("Нет ошибок / неуверенных площадок")
+                    return
+                }
+                runRescanErrors(report, reportId ?: UUID.randomUUID().toString())
+            }
             else -> {
                 _state.update { it.copy(isBusy = true) }
                 viewModelScope.launch {
@@ -485,13 +515,15 @@ class WorkbenchViewModel(
                     scanProgress = null,
                 )
             }
-            historyStore.save(
-                ChatSnapshot(
-                    messages = listOf(welcome),
-                    pendingMode = SearchMode.NONE,
-                    reports = emptyMap(),
-                ),
-            )
+            if (appSettings.persistHistory) {
+                historyStore.save(
+                    ChatSnapshot(
+                        messages = listOf(welcome),
+                        pendingMode = SearchMode.NONE,
+                        reports = emptyMap(),
+                    ),
+                )
+            }
         }
     }
 
@@ -553,6 +585,69 @@ class WorkbenchViewModel(
                     )
                 }
                 throw e
+            }
+        }
+    }
+
+    private fun runRescanErrors(report: OsintResult.UsernameReport, reportId: String) {
+        scanJob?.cancel()
+        lastProgress.clear()
+        lastScanUsername = report.username
+        val sites = UsernameReportMerge.failedSiteNames(report).size
+        val userMessage = ChatMessage(
+            id = UUID.randomUUID().toString(),
+            text = "/username ${report.username} · добить ошибки ($sites)",
+            fromBot = false,
+        )
+        _state.update {
+            it.copy(
+                messages = it.messages + userMessage,
+                isBusy = true,
+            )
+        }
+        scanJob = viewModelScope.launch {
+            showStatus("Добиваю ошибки `$lastScanUsername`…")
+            try {
+                val reply = bot.rescanFailedSites(report, reportId) { progress ->
+                    lastProgress.add(progress)
+                    showStatus(
+                        text = bot.formatScanProgress(
+                            username = report.username,
+                            lines = lastProgress.map { bot.progressLine(it) },
+                            done = progress.done,
+                            total = progress.total,
+                        ),
+                        progress = progress,
+                        username = report.username,
+                    )
+                }
+                hideStatus()
+                _hapticEvents.tryEmit(Unit)
+                refreshSettingsState()
+                _state.update {
+                    appSettings.pinnedMessageId = reply.id
+                    it.copy(
+                        messages = it.messages + reply,
+                        pendingMode = SearchMode.NONE,
+                        isBusy = false,
+                        celebrateScan = true,
+                        pinnedMessageId = reply.id,
+                    )
+                }
+            } catch (e: CancellationException) {
+                hideStatus()
+                val cancelled = bot.cancelledScanMessage(report.username, lastProgress.toList())
+                _state.update {
+                    it.copy(
+                        messages = it.messages + cancelled,
+                        isBusy = false,
+                    )
+                }
+                throw e
+            } catch (e: Exception) {
+                hideStatus()
+                _toastEvents.tryEmit(e.message ?: "Не удалось добить ошибки")
+                _state.update { it.copy(isBusy = false) }
             }
         }
     }
@@ -679,6 +774,7 @@ class WorkbenchViewModel(
                 maxParallel = appSettings.maxParallel,
                 includeBotProtected = appSettings.includeBotProtected,
                 hideInRecents = appSettings.hideInRecents,
+                persistHistory = appSettings.persistHistory,
                 usernameCacheEntries = bot.usernameCacheSize(),
                 catalogUrl = appSettings.catalogUrl,
                 catalogSource = info?.source ?: it.catalogSource,

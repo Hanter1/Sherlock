@@ -14,6 +14,19 @@ class OsintEngineClassifyTest {
     }
 
     @Test
+    fun withoutOkMarkersHttp200IsUncertainNotFound() {
+        val site = OsintSite(
+            name = "GitHub",
+            urlTemplate = "https://github.com/{user}",
+            okCodes = setOf(200),
+            errorCodes = setOf(404),
+            useHead = true,
+        )
+        val result = engine.classify(site, "https://github.com/x", 200, null)
+        assertTrue(result is OsintEngine.CheckOutcome.Uncertain)
+    }
+
+    @Test
     fun status404MeansMissing() {
         val site = OsintSite("GitHub", "https://github.com/{user}", errorCodes = setOf(404))
         val result = engine.classify(site, "https://github.com/x", 404, null)

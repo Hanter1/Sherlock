@@ -2,12 +2,14 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="chat_history.json" />
+        <exclude domain="file" path="chat_history.enc" />
         <exclude domain="file" path="username_cache.json" />
         <exclude domain="file" path="osint_sites_remote.json" />
         <exclude domain="sharedpref" path="sherlock_settings" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="chat_history.json" />
+        <exclude domain="file" path="chat_history.enc" />
         <exclude domain="file" path="username_cache.json" />
         <exclude domain="file" path="osint_sites_remote.json" />
         <exclude domain="sharedpref" path="sherlock_settings" />

@@ -1001,6 +1001,11 @@ private fun SettingsDialog(
                     checked = state.hideInRecents,
                     onCheckedChange = viewModel::setHideInRecents,
                 )
+                SettingsSwitch(
+                    label = "Сохранять историю на диск",
+                    checked = state.persistHistory,
+                    onCheckedChange = viewModel::setPersistHistory,
+                )
                 Text(
                     "Remote-каталог (${state.catalogSource} v${state.catalogVersion})",
                     color = Cabinet.TextSecondary,

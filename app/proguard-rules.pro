@@ -13,5 +13,6 @@
 -dontwarn kotlin.**
 -keep class kotlin.Metadata { *; }
 
-# Keep chat history / catalog JSON field names used via org.json (no reflection POJOs)
-# Application code uses explicit JSONObject getters — nothing extra to keep.
+# EncryptedFile / Tink
+-dontwarn com.google.crypto.tink.**
+-keep class com.google.crypto.tink.** { *; }

@@ -60,6 +60,13 @@ class AppSettings(context: Context) {
             prefs.edit().putString(KEY_PENDING_MODE, value.name).apply()
         }
 
+    /** When false, chat history is not written to disk. */
+    var persistHistory: Boolean
+        get() = prefs.getBoolean(KEY_PERSIST_HISTORY, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_PERSIST_HISTORY, value).apply()
+        }
+
     fun cycleParallel(): Int {
         val next = when (maxParallel) {
             3 -> 6
@@ -79,6 +86,7 @@ class AppSettings(context: Context) {
         private const val KEY_PINNED_ID = "pinned_message_id"
         private const val KEY_CATALOG_URL = "catalog_url"
         private const val KEY_PENDING_MODE = "pending_mode"
+        private const val KEY_PERSIST_HISTORY = "persist_history"
         const val DEFAULT_PARALLEL = 6
         val ALLOWED_PARALLEL = setOf(3, 6, 10)
         /** Empty = only bundled asset until user sets a URL. */

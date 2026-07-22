@@ -12,6 +12,7 @@ import com.sherlock.bot.data.SiteCheckProgress
 import com.sherlock.bot.data.SiteCheckStatus
 import com.sherlock.bot.data.SiteHit
 import com.sherlock.bot.data.UsernameReportFilter
+import com.sherlock.bot.data.UsernameReportMerge
 import java.util.LinkedHashMap
 import java.util.UUID
 
@@ -81,7 +82,7 @@ class BotInteractor(
             /about — версия приложения и каталогов
             /settings — параллелизм, Instagram/X, кэш, remote-каталог
             
-            Под отчётом: фильтры, «Закрепить», «Повторить без кэша», экспорт MD/JSON.
+            Под отчётом: фильтры, «Закрепить», «Повторить без кэша», «Добить ошибки», экспорт MD/JSON.
             Поиск по истории — лупа в шапке.
             Каталог площадок: ${siteCount()} шт. (${OsintCatalog.info().source})
         """.trimIndent(),
@@ -217,7 +218,7 @@ class BotInteractor(
         "settings" -> null // ViewModel opens Settings
         "clear_history" -> null // handled by ViewModel
         "report_found", "report_no_errors", "report_full" -> null
-        "rescan", "export_md", "export_json", "pin_report" -> null
+        "rescan", "rescan_errors", "export_md", "export_json", "pin_report" -> null
         else -> help() to SearchMode.NONE
     }
 
@@ -251,6 +252,16 @@ class BotInteractor(
         return formatResult(osint.searchUsername(username, onScanProgress, bypassCache = true))
     }
 
+    suspend fun rescanFailedSites(
+        report: OsintResult.UsernameReport,
+        reportId: String,
+        onScanProgress: suspend (SiteCheckProgress) -> Unit = {},
+    ): ChatMessage {
+        requireOnline()?.let { return it }
+        val merged = osint.rescanFailedSites(report, includeUncertain = true, onScanProgress)
+        return formatUsernameReport(merged, reportId = reportId)
+    }
+
     fun clearUsernameCaches() {
         osint.clearUsernameCaches()
     }
@@ -270,6 +281,7 @@ class BotInteractor(
 
     fun progressLine(progress: SiteCheckProgress): String = when (progress.status) {
         SiteCheckStatus.FOUND -> "✓ ${progress.site}"
+        SiteCheckStatus.UNCERTAIN -> "~ ${progress.site} — ?"
         SiteCheckStatus.MISSING -> "· ${progress.site} — нет"
         SiteCheckStatus.ERROR -> "? ${progress.site} — ${progress.reason ?: "ошибка"}"
     }
@@ -282,12 +294,16 @@ class BotInteractor(
             return bot("Операция остановлена.", actions = mainMenu())
         }
         val found = progress.filter { it.status == SiteCheckStatus.FOUND }
+        val uncertain = progress.count { it.status == SiteCheckStatus.UNCERTAIN }
         val missing = progress.count { it.status == SiteCheckStatus.MISSING }
         val errors = progress.count { it.status == SiteCheckStatus.ERROR }
         val body = buildString {
             appendLine("—— Сводка ——")
             appendLine("Скан остановлен · `$username`")
-            appendLine("Проверено: ${progress.size} · найдено: *${found.size}* · нет: $missing · ошибки: $errors")
+            appendLine(
+                "Проверено: ${progress.size} · найдено: *${found.size}* · " +
+                    "неуверенно: $uncertain · нет: $missing · ошибки: $errors",
+            )
             appendLine()
             if (found.isNotEmpty()) {
                 appendLine("Уже найдены:")
@@ -295,7 +311,7 @@ class BotInteractor(
                     appendLine("• ${p.site}${p.url?.let { ": $it" } ?: ""}")
                 }
             } else {
-                appendLine("До остановки публичные профили не найдены.")
+                appendLine("До остановки подтверждённые профили не найдены.")
             }
         }.trim()
         return bot(body, actions = reportActions())
@@ -307,7 +323,7 @@ class BotInteractor(
         reportId: String = UUID.randomUUID().toString(),
     ): ChatMessage {
         putReport(reportId, result)
-        val total = result.found.size + result.notFound.size + result.errors.size
+        val total = result.found.size + result.uncertain.size + result.notFound.size + result.errors.size
         val body = buildString {
             appendLine("—— Сводка ——")
             when {
@@ -316,8 +332,8 @@ class BotInteractor(
                 else -> appendLine("Ник `${result.username}`")
             }
             appendLine(
-                "Найдено: *${result.found.size}* · нет: ${result.notFound.size} · " +
-                    "ошибки: ${result.errors.size} · всего: $total",
+                "Найдено: *${result.found.size}* · неуверенно: ${result.uncertain.size} · " +
+                    "нет: ${result.notFound.size} · ошибки: ${result.errors.size} · всего: $total",
             )
             if (!result.fromCache) {
                 appendLine("Время: ${SiteCategories.formatElapsed(result.elapsedMs)}")
@@ -331,7 +347,7 @@ class BotInteractor(
 
             when (filter) {
                 UsernameReportFilter.FOUND_ONLY -> {
-                    appendLine("Фильтр: только найденные")
+                    appendLine("Фильтр: только найденные (подтверждённые)")
                     appendLine()
                 }
                 UsernameReportFilter.HIDE_ERRORS -> {
@@ -346,7 +362,13 @@ class BotInteractor(
                 appendFoundGrouped(result.found)
                 appendLine()
             } else {
-                appendLine("Публичные профили не найдены.")
+                appendLine("Подтверждённые публичные профили не найдены.")
+                appendLine()
+            }
+
+            if (filter != UsernameReportFilter.FOUND_ONLY && result.uncertain.isNotEmpty()) {
+                appendLine("Неуверенно (нет маркера профиля):")
+                result.uncertain.forEach { appendLine("• ${it.site}: ${it.url}") }
                 appendLine()
             }
 
@@ -356,7 +378,7 @@ class BotInteractor(
                 if (result.errors.size > 8) appendLine("• …ещё ${result.errors.size - 8}")
             }
         }.trim()
-        return bot(body, actions = usernameReportActions(), reportId = reportId)
+        return bot(body, actions = usernameReportActions(result), reportId = reportId)
     }
 
     private fun StringBuilder.appendCategoryBreakdown(found: List<SiteHit>) {
@@ -420,19 +442,27 @@ class BotInteractor(
         BotAction("clear_history", "Очистить чат"),
     )
 
-    private fun usernameReportActions(): List<BotAction> = listOf(
-        BotAction("rescan", "Повторить без кэша"),
-        BotAction("pin_report", "Закрепить"),
-        BotAction("report_found", "Только найденные"),
-        BotAction("report_no_errors", "Без ошибок"),
-        BotAction("report_full", "Полный отчёт"),
-        BotAction("export_md", "Экспорт MD"),
-        BotAction("export_json", "Экспорт JSON"),
-        BotAction("share", "Поделиться"),
-        BotAction("copy", "Копировать"),
-        BotAction("username", "Никнейм"),
-        BotAction("clear_history", "Очистить чат"),
-    )
+    private fun usernameReportActions(report: OsintResult.UsernameReport): List<BotAction> {
+        val actions = mutableListOf(
+            BotAction("rescan", "Повторить без кэша"),
+        )
+        if (UsernameReportMerge.failedSiteNames(report).isNotEmpty()) {
+            actions.add(BotAction("rescan_errors", "Добить ошибки"))
+        }
+        actions += listOf(
+            BotAction("pin_report", "Закрепить"),
+            BotAction("report_found", "Только найденные"),
+            BotAction("report_no_errors", "Без ошибок"),
+            BotAction("report_full", "Полный отчёт"),
+            BotAction("export_md", "Экспорт MD"),
+            BotAction("export_json", "Экспорт JSON"),
+            BotAction("share", "Поделиться"),
+            BotAction("copy", "Копировать"),
+            BotAction("username", "Никнейм"),
+            BotAction("clear_history", "Очистить чат"),
+        )
+        return actions
+    }
 
     private fun reportActions(): List<BotAction> = listOf(
         BotAction("share", "Поделиться"),

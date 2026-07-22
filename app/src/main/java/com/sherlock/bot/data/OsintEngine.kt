@@ -41,33 +41,40 @@ class OsintEngine(
         raw: String,
         onProgress: suspend (SiteCheckProgress) -> Unit = {},
         bypassCache: Boolean = false,
+        onlySites: Set<String>? = null,
     ): OsintResult.UsernameReport = withContext(Dispatchers.IO) {
         val username = raw.trim().removePrefix("@")
         require(usernamePattern.matcher(username).matches()) {
             "Никнейм должен быть 2–32 символа: буквы, цифры, . _ -"
         }
 
-        if (bypassCache) {
-            // keep previous for Δ before wipe
-        } else {
-            sessionCache.get(username)?.let { cached ->
-                return@withContext cached.copy(fromCache = true, elapsedMs = 0, previousDiff = null)
-            }
-            diskCache?.get(username)?.let { cached ->
-                sessionCache.put(username, cached)
-                return@withContext cached.copy(fromCache = true, elapsedMs = 0, previousDiff = null)
+        val partialScan = !onlySites.isNullOrEmpty()
+        if (!partialScan) {
+            if (bypassCache) {
+                // keep previous for Δ before wipe
+            } else {
+                sessionCache.get(username)?.let { cached ->
+                    return@withContext cached.copy(fromCache = true, elapsedMs = 0, previousDiff = null)
+                }
+                diskCache?.get(username)?.let { cached ->
+                    sessionCache.put(username, cached)
+                    return@withContext cached.copy(fromCache = true, elapsedMs = 0, previousDiff = null)
+                }
             }
         }
 
-        val previous = sessionCache.get(username) ?: diskCache?.get(username)
-        if (bypassCache) {
+        val previous = if (partialScan) null else sessionCache.get(username) ?: diskCache?.get(username)
+        if (bypassCache && !partialScan) {
             invalidateUsername(username)
         }
 
         val sites = ScanSiteFilter.filter(
             sites = OsintCatalog.usernameSites,
             includeBotProtected = includeBotProtected(),
-        )
+        ).let { list ->
+            if (onlySites.isNullOrEmpty()) list
+            else list.filter { it.name in onlySites }
+        }
         require(sites.isNotEmpty()) { "Нет площадок для проверки (проверьте настройки каталога)" }
 
         val started = System.currentTimeMillis()
@@ -95,6 +102,14 @@ class OsintEngine(
                                 done = n,
                                 total = sites.size,
                             )
+                            is CheckOutcome.Uncertain -> SiteCheckProgress(
+                                site = site.name,
+                                status = SiteCheckStatus.UNCERTAIN,
+                                url = outcome.url,
+                                reason = outcome.reason,
+                                done = n,
+                                total = sites.size,
+                            )
                             is CheckOutcome.Missing -> SiteCheckProgress(
                                 site = site.name,
                                 status = SiteCheckStatus.MISSING,
@@ -117,6 +132,9 @@ class OsintEngine(
         }
 
         val report = buildUsernameReport(username, results, started, cancelled = false)
+        if (partialScan) {
+            return@withContext report
+        }
         val withDiff = if (previous != null && !previous.cancelled) {
             report.copy(previousDiff = UsernameScanDiff.format(previous, report))
         } else {
@@ -125,6 +143,30 @@ class OsintEngine(
         sessionCache.put(username, withDiff)
         diskCache?.put(username, withDiff)
         withDiff
+    }
+
+    /** Re-check error (+ optional uncertain) sites and merge into [previous]. */
+    suspend fun rescanFailedSites(
+        previous: OsintResult.UsernameReport,
+        includeUncertain: Boolean = true,
+        onProgress: suspend (SiteCheckProgress) -> Unit = {},
+    ): OsintResult.UsernameReport {
+        val names = if (includeUncertain) {
+            UsernameReportMerge.failedSiteNames(previous)
+        } else {
+            UsernameReportMerge.errorSiteNames(previous)
+        }
+        require(names.isNotEmpty()) { "Нет ошибок / неуверенных площадок для повтора" }
+        val partial = searchUsername(
+            raw = previous.username,
+            onProgress = onProgress,
+            bypassCache = true,
+            onlySites = names,
+        )
+        val merged = UsernameReportMerge.merge(previous, partial, names)
+        sessionCache.put(previous.username, merged)
+        diskCache?.put(previous.username, merged)
+        return merged
     }
 
     fun invalidateUsername(username: String) {
@@ -256,9 +298,13 @@ class OsintEngine(
             }
         }
 
+        // Without profile markers, HTTP 2xx is not enough for a confirmed FOUND.
         return when {
-            code in site.okCodes -> CheckOutcome.Found(site.name, url)
-            code in 200..299 -> CheckOutcome.Found(site.name, url)
+            code in site.okCodes || code in 200..299 -> CheckOutcome.Uncertain(
+                site = site.name,
+                url = url,
+                reason = "нет маркера профиля",
+            )
             code == 404 -> CheckOutcome.Missing(site.name)
             else -> CheckOutcome.Error(site.name, "HTTP $code")
         }
@@ -348,11 +394,19 @@ class OsintEngine(
                 categories = categoriesByName[it.site].orEmpty(),
             )
         }
+        val uncertain = results.mapNotNull { it as? CheckOutcome.Uncertain }.map {
+            SiteHit(
+                site = it.site,
+                url = it.url,
+                categories = categoriesByName[it.site].orEmpty(),
+            )
+        }
         val notFound = results.mapNotNull { it as? CheckOutcome.Missing }.map { it.site }
         val errors = results.mapNotNull { it as? CheckOutcome.Error }.map { "${it.site}: ${it.reason}" }
         return OsintResult.UsernameReport(
             username = username,
             found = found.sortedBy { it.site },
+            uncertain = uncertain.sortedBy { it.site },
             notFound = notFound.sorted(),
             errors = errors.sorted(),
             elapsedMs = System.currentTimeMillis() - started,
@@ -368,6 +422,7 @@ class OsintEngine(
 
     internal sealed class CheckOutcome {
         data class Found(val site: String, val url: String) : CheckOutcome()
+        data class Uncertain(val site: String, val url: String, val reason: String) : CheckOutcome()
         data class Missing(val site: String) : CheckOutcome()
         data class Error(val site: String, val reason: String) : CheckOutcome()
     }
