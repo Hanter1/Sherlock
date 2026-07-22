@@ -69,6 +69,7 @@ data class SiteHit(
     val url: String,
     val categories: List<String> = emptyList(),
     val confidence: HitConfidence = HitConfidence.CONFIRMED,
+    val diagnostics: HttpDiagnostics? = null,
 )
 
 enum class SiteCheckStatus {

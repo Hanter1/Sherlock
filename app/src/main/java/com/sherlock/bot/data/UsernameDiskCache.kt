@@ -163,6 +163,18 @@ object UsernameReportCodec {
             .put("url", hit.url)
             .put("categories", JSONArray(hit.categories))
             .put("confidence", hit.confidence.id)
+            .also { json ->
+                hit.diagnostics?.let { diag ->
+                    json.put(
+                        "diagnostics",
+                        JSONObject()
+                            .put("httpCode", diag.httpCode)
+                            .put("finalUrl", diag.finalUrl)
+                            .put("redirectCount", diag.redirectCount)
+                            .put("detail", diag.detail),
+                    )
+                }
+            }
 
     fun decodeReport(obj: JSONObject): OsintResult.UsernameReport {
         val foundArr = obj.optJSONArray("found") ?: JSONArray()
@@ -199,11 +211,21 @@ object UsernameReportCodec {
         } else {
             defaultConfidence
         }
+        val diagObj = hit.optJSONObject("diagnostics")
+        val diagnostics = diagObj?.let {
+            HttpDiagnostics(
+                httpCode = if (it.has("httpCode") && !it.isNull("httpCode")) it.optInt("httpCode") else null,
+                finalUrl = it.optString("finalUrl", "").takeIf { u -> u.isNotBlank() },
+                redirectCount = it.optInt("redirectCount", 0),
+                detail = it.optString("detail", "").takeIf { d -> d.isNotBlank() },
+            )
+        }
         return SiteHit(
             site = hit.getString("site"),
             url = hit.getString("url"),
             categories = cats?.toStringList().orEmpty(),
             confidence = confidence,
+            diagnostics = diagnostics,
         )
     }
 

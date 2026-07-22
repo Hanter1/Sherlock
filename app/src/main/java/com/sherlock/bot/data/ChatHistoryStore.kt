@@ -14,13 +14,15 @@ class ChatHistoryStore(
     context: Context,
     private val fileName: String = "chat_history.json",
     private val encryptedFileName: String = "chat_history.enc",
+    /** When false, store plaintext JSON only (unit tests / Robolectric). */
+    private val encrypted: Boolean = true,
 ) {
     private val appContext = context.applicationContext
     private val plainFile = File(appContext.filesDir, fileName)
     private val encFile = File(appContext.filesDir, encryptedFileName)
 
     suspend fun load(): ChatSnapshot? = withContext(Dispatchers.IO) {
-        if (encFile.exists()) {
+        if (encrypted && encFile.exists()) {
             return@withContext runCatching {
                 openEncrypted().openFileInput().bufferedReader().use { reader ->
                     ChatHistoryCodec.decode(reader.readText())
@@ -29,7 +31,7 @@ class ChatHistoryStore(
         }
         if (!plainFile.exists()) return@withContext null
         val decoded = ChatHistoryCodec.decode(plainFile.readText())
-        if (decoded != null) {
+        if (decoded != null && encrypted) {
             runCatching {
                 writeEncrypted(decoded)
                 plainFile.delete()
@@ -39,8 +41,13 @@ class ChatHistoryStore(
     }
 
     suspend fun save(snapshot: ChatSnapshot) = withContext(Dispatchers.IO) {
-        writeEncrypted(snapshot)
-        if (plainFile.exists()) plainFile.delete()
+        if (encrypted) {
+            writeEncrypted(snapshot)
+            if (plainFile.exists()) plainFile.delete()
+        } else {
+            plainFile.parentFile?.mkdirs()
+            AtomicFiles.writeText(plainFile, ChatHistoryCodec.encode(snapshot))
+        }
     }
 
     suspend fun clear() = withContext(Dispatchers.IO) {

@@ -60,7 +60,14 @@ object ReportExporter {
                 appendLine()
                 appendLine("_Уверенность: ${HitConfidence.UNCERTAIN.label} — HTTP ок, но нет маркера профиля._")
                 appendLine()
-                report.uncertain.forEach { appendLine("- [${it.site}](${it.url})") }
+                report.uncertain.forEach { hit ->
+                    val diag = hit.diagnostics?.formatBrief()?.takeIf { it.isNotBlank() }
+                    if (diag != null) {
+                        appendLine("- [${hit.site}](${hit.url}) — $diag")
+                    } else {
+                        appendLine("- [${hit.site}](${hit.url})")
+                    }
+                }
                 appendLine()
             }
             if (report.errors.isNotEmpty()) {

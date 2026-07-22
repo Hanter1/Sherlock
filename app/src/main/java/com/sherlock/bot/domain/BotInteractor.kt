@@ -441,7 +441,14 @@ class BotInteractor(
 
             if (filter != UsernameReportFilter.FOUND_ONLY && result.uncertain.isNotEmpty()) {
                 appendLine("Неуверенно (нет маркера профиля):")
-                result.uncertain.forEach { appendLine("• ${it.site}: ${it.url}") }
+                result.uncertain.forEach { hit ->
+                    val diag = hit.diagnostics?.formatBrief()?.takeIf { it.isNotBlank() }
+                    if (diag != null) {
+                        appendLine("• ${hit.site}: ${hit.url} ($diag)")
+                    } else {
+                        appendLine("• ${hit.site}: ${hit.url}")
+                    }
+                }
                 appendLine()
             }
 

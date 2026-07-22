@@ -23,6 +23,7 @@ import com.sherlock.bot.data.OsintEngine
 import com.sherlock.bot.data.OsintResult
 import com.sherlock.bot.data.PiiRedactor
 import com.sherlock.bot.data.ReportExporter
+import com.sherlock.bot.data.ScanNotifier
 import com.sherlock.bot.data.ScanPreset
 import com.sherlock.bot.data.SearchMode
 import com.sherlock.bot.data.SiteCheckProgress
@@ -51,6 +52,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class ScanProgressUi(
     val username: String,
@@ -177,6 +179,25 @@ class WorkbenchViewModel(
     private var pendingEmailQuery: String? = null
     private var pendingShareText: String? = null
     private var pendingShareAsShare: Boolean = true
+    private val appInForeground = AtomicBoolean(true)
+    private val userCancelledScan = AtomicBoolean(false)
+
+    fun setAppInForeground(value: Boolean) {
+        appInForeground.set(value)
+    }
+
+    /** Test-only: inject chat messages after history load. */
+    internal fun seedMessagesForTests(messages: List<ChatMessage>) {
+        _state.update {
+            it.copy(
+                messages = messages,
+                historyLoaded = true,
+                isBusy = false,
+            )
+        }
+    }
+
+    internal fun botForTests(): BotInteractor = bot
 
     init {
         viewModelScope.launch {
@@ -491,7 +512,21 @@ class WorkbenchViewModel(
 
     fun cancelScan() {
         if (!_state.value.isBusy) return
+        userCancelledScan.set(true)
+        val username = lastScanUsername
+        val progressSnapshot = lastProgress.toList()
         scanJob?.cancel()
+        scanJob = null
+        hideStatus()
+        val cancelled = bot.cancelledScanMessage(username, progressSnapshot)
+        maybeNotifyScanFinished(listOf(cancelled), cancelled = true)
+        _state.update {
+            it.copy(
+                messages = it.messages + cancelled,
+                isBusy = false,
+                scanProgress = null,
+            )
+        }
     }
 
     fun onAction(messageId: String, actionId: String) {
@@ -704,6 +739,7 @@ class WorkbenchViewModel(
                 hideStatus()
                 val produced = reply.reportId != null && reply.reportId !in reportBeforeIds
                 if (produced) _hapticEvents.tryEmit(Unit)
+                maybeNotifyScanFinished(listOf(reply), cancelled = false)
                 refreshSettingsState()
                 _state.update {
                     val messages = it.messages + reply
@@ -720,6 +756,7 @@ class WorkbenchViewModel(
             } catch (e: CancellationException) {
                 hideStatus()
                 val cancelled = bot.cancelledScanMessage(username, lastProgress.toList())
+                maybeNotifyScanFinished(listOf(cancelled), cancelled = true)
                 _state.update {
                     it.copy(
                         messages = it.messages + cancelled,
@@ -765,6 +802,7 @@ class WorkbenchViewModel(
                 }
                 hideStatus()
                 _hapticEvents.tryEmit(Unit)
+                maybeNotifyScanFinished(listOf(reply), cancelled = false)
                 refreshSettingsState()
                 _state.update {
                     appSettings.pinnedMessageId = reply.id
@@ -838,6 +876,7 @@ class WorkbenchViewModel(
 
     private fun respond(text: String) {
         scanJob?.cancel()
+        userCancelledScan.set(false)
         lastProgress.clear()
         lastScanUsername = text.removePrefix("/username").trim().ifBlank {
             text.trim().removePrefix("@")
@@ -878,6 +917,7 @@ class WorkbenchViewModel(
                 if ((producedUsernameReport || isCompareReport) && replies.isNotEmpty()) {
                     _hapticEvents.tryEmit(Unit)
                 }
+                maybeNotifyScanFinished(replies, cancelled = false)
                 refreshSettingsState()
                 _state.update {
                     val messages = it.messages + replies
@@ -898,7 +938,12 @@ class WorkbenchViewModel(
                 }
             } catch (e: CancellationException) {
                 hideStatus()
+                if (userCancelledScan.compareAndSet(true, false)) {
+                    // cancelScan() already appended the partial report
+                    throw e
+                }
                 val cancelled = bot.cancelledScanMessage(lastScanUsername, lastProgress.toList())
+                maybeNotifyScanFinished(listOf(cancelled), cancelled = true)
                 _state.update {
                     it.copy(
                         messages = it.messages + cancelled,
@@ -908,6 +953,25 @@ class WorkbenchViewModel(
                 throw e
             }
         }
+    }
+
+    private fun maybeNotifyScanFinished(replies: List<ChatMessage>, cancelled: Boolean) {
+        if (appInForeground.get()) return
+        val report = replies.asReversed().firstNotNullOfOrNull { msg ->
+            msg.reportId?.let { bot.reportFor(it) }
+        }
+        val username = report?.username ?: lastScanUsername.takeIf { it.isNotBlank() } ?: return
+        val found = report?.found?.size
+            ?: lastProgress.count { it.status == com.sherlock.bot.data.SiteCheckStatus.FOUND }
+        val uncertain = report?.uncertain?.size
+            ?: lastProgress.count { it.status == com.sherlock.bot.data.SiteCheckStatus.UNCERTAIN }
+        ScanNotifier.notifyScanFinished(
+            context = getApplication(),
+            username = username.removePrefix("@"),
+            found = found,
+            uncertain = uncertain,
+            cancelled = cancelled || (report?.cancelled == true),
+        )
     }
 
     private fun reportIdForMessage(messageId: String): String? {

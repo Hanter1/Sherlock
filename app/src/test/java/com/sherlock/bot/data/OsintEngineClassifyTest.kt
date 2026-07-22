@@ -149,4 +149,25 @@ class OsintEngineClassifyTest {
         assertTrue(decoded.contains("Иванов"))
         assertTrue(decoded.contains("Иван"))
     }
+
+    @Test
+    fun uncertainIncludesHttpDiagnostics() {
+        val site = OsintSite(
+            name = "Mystery",
+            urlTemplate = "https://example.com/{user}",
+            okCodes = setOf(200),
+            errorCodes = setOf(404),
+        )
+        val result = engine.classify(
+            site = site,
+            url = "https://example.com/x",
+            code = 200,
+            body = null,
+            probe = null,
+        )
+        assertTrue(result is OsintEngine.CheckOutcome.Uncertain)
+        val uncertain = result as OsintEngine.CheckOutcome.Uncertain
+        assertTrue(uncertain.diagnostics?.formatBrief()?.contains("HTTP 200") == true)
+        assertTrue(uncertain.diagnostics?.formatBrief()?.contains("нет маркера") == true)
+    }
 }

@@ -13,6 +13,8 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Response
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
@@ -37,6 +39,7 @@ class OsintEngine(
     private val scanPreset: () -> ScanPreset = { ScanPreset.ALL },
     private val emailLookupMx: () -> Boolean = { true },
     private val emailLookupGravatar: () -> Boolean = { true },
+    private val hostRateLimiter: HostRateLimiter = HostRateLimiter(),
 ) {
     private val usernamePattern = Pattern.compile("^[A-Za-z0-9._-]{2,32}$")
 
@@ -101,51 +104,60 @@ class OsintEngine(
         val results = coroutineScope {
             sites.map { site ->
                 async {
-                    semaphore.withPermit {
-                        currentCoroutineContext().ensureActive()
-                        if (site.rateLimitMs > 0) {
-                            delay(site.rateLimitMs)
+                    val host = site.urlTemplate
+                        .replace("{user}", "probe")
+                        .toHttpUrlOrNull()
+                        ?.host
+                        ?.takeIf { it.isNotBlank() }
+                        ?: site.name.lowercase()
+                    hostRateLimiter.withHost(host) {
+                        semaphore.withPermit {
                             currentCoroutineContext().ensureActive()
+                            if (site.rateLimitMs > 0) {
+                                delay(site.rateLimitMs)
+                                currentCoroutineContext().ensureActive()
+                            }
+                            val outcome = checkSite(site, username)
+                            currentCoroutineContext().ensureActive()
+                            val n = done.incrementAndGet()
+                            val progress = when (outcome) {
+                                is CheckOutcome.Found -> SiteCheckProgress(
+                                    site = site.name,
+                                    status = SiteCheckStatus.FOUND,
+                                    url = outcome.url,
+                                    done = n,
+                                    total = sites.size,
+                                    username = username,
+                                )
+                                is CheckOutcome.Uncertain -> SiteCheckProgress(
+                                    site = site.name,
+                                    status = SiteCheckStatus.UNCERTAIN,
+                                    url = outcome.url,
+                                    reason = outcome.diagnostics?.formatBrief() ?: outcome.reason,
+                                    done = n,
+                                    total = sites.size,
+                                    username = username,
+                                )
+                                is CheckOutcome.Missing -> SiteCheckProgress(
+                                    site = site.name,
+                                    status = SiteCheckStatus.MISSING,
+                                    done = n,
+                                    total = sites.size,
+                                    username = username,
+                                )
+                                is CheckOutcome.Error -> SiteCheckProgress(
+                                    site = site.name,
+                                    status = SiteCheckStatus.ERROR,
+                                    reason = outcome.diagnostics?.formatBrief()?.ifBlank { null }
+                                        ?: outcome.reason,
+                                    done = n,
+                                    total = sites.size,
+                                    username = username,
+                                )
+                            }
+                            onProgress(progress)
+                            outcome
                         }
-                        val outcome = checkSite(site, username)
-                        currentCoroutineContext().ensureActive()
-                        val n = done.incrementAndGet()
-                        val progress = when (outcome) {
-                            is CheckOutcome.Found -> SiteCheckProgress(
-                                site = site.name,
-                                status = SiteCheckStatus.FOUND,
-                                url = outcome.url,
-                                done = n,
-                                total = sites.size,
-                                username = username,
-                            )
-                            is CheckOutcome.Uncertain -> SiteCheckProgress(
-                                site = site.name,
-                                status = SiteCheckStatus.UNCERTAIN,
-                                url = outcome.url,
-                                reason = outcome.reason,
-                                done = n,
-                                total = sites.size,
-                                username = username,
-                            )
-                            is CheckOutcome.Missing -> SiteCheckProgress(
-                                site = site.name,
-                                status = SiteCheckStatus.MISSING,
-                                done = n,
-                                total = sites.size,
-                                username = username,
-                            )
-                            is CheckOutcome.Error -> SiteCheckProgress(
-                                site = site.name,
-                                status = SiteCheckStatus.ERROR,
-                                reason = outcome.reason,
-                                done = n,
-                                total = sites.size,
-                                username = username,
-                            )
-                        }
-                        onProgress(progress)
-                        outcome
                     }
                 }
             }.awaitAll()
@@ -325,10 +337,28 @@ class OsintEngine(
                 response = executeWithRetry("GET", url, readBody = needsBody)
             }
 
-            classify(site, url, response.code, response.body)
+            if (response.code == 429) {
+                return CheckOutcome.Error(
+                    site = site.name,
+                    reason = "rate limited",
+                    diagnostics = response.toDiagnostics("rate limited"),
+                )
+            }
+
+            classify(
+                site = site,
+                url = url,
+                code = response.code,
+                body = response.body,
+                probe = response,
+            )
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            CheckOutcome.Error(site.name, e.message ?: "network error")
+            CheckOutcome.Error(
+                site = site.name,
+                reason = e.message ?: "network error",
+                diagnostics = HttpDiagnostics(detail = e.message ?: "network error"),
+            )
         }
     }
 
@@ -337,14 +367,21 @@ class OsintEngine(
         url: String,
         code: Int,
         body: String?,
+        probe: HttpProbe? = null,
     ): CheckOutcome {
+        val baseDiag = probe?.toDiagnostics() ?: HttpDiagnostics.of(code = code, finalUrl = url)
+
         if (site.errorCodes.isNotEmpty() && code in site.errorCodes) {
             return CheckOutcome.Missing(site.name)
         }
 
         val text = body.orEmpty()
         if (site.blockBodyMarkers.any { marker -> text.contains(marker, ignoreCase = true) }) {
-            return CheckOutcome.Error(site.name, "blocked / challenge")
+            return CheckOutcome.Error(
+                site = site.name,
+                reason = "blocked / challenge",
+                diagnostics = baseDiag.withDetail("blocked / challenge"),
+            )
         }
         if (site.errorBodyMarkers.any { marker -> text.contains(marker, ignoreCase = true) }) {
             return CheckOutcome.Missing(site.name)
@@ -352,20 +389,28 @@ class OsintEngine(
 
         if (site.okBodyMarkers.isNotEmpty()) {
             return if (site.okBodyMarkers.any { marker -> text.contains(marker, ignoreCase = true) }) {
-                CheckOutcome.Found(site.name, url)
+                CheckOutcome.Found(site.name, url, baseDiag)
             } else if (code in 200..299) {
                 CheckOutcome.Missing(site.name)
             } else {
-                CheckOutcome.Error(site.name, "HTTP $code")
+                CheckOutcome.Error(
+                    site = site.name,
+                    reason = "HTTP $code",
+                    diagnostics = baseDiag.withDetail("HTTP $code"),
+                )
             }
         }
 
         if (site.trustHttpStatus) {
             return when {
-                code in site.okCodes -> CheckOutcome.Found(site.name, url)
-                code in 200..299 -> CheckOutcome.Found(site.name, url)
+                code in site.okCodes -> CheckOutcome.Found(site.name, url, baseDiag)
+                code in 200..299 -> CheckOutcome.Found(site.name, url, baseDiag)
                 code == 404 -> CheckOutcome.Missing(site.name)
-                else -> CheckOutcome.Error(site.name, "HTTP $code")
+                else -> CheckOutcome.Error(
+                    site = site.name,
+                    reason = "HTTP $code",
+                    diagnostics = baseDiag.withDetail("HTTP $code"),
+                )
             }
         }
 
@@ -375,9 +420,14 @@ class OsintEngine(
                 site = site.name,
                 url = url,
                 reason = "нет маркера профиля",
+                diagnostics = baseDiag.withDetail("нет маркера профиля"),
             )
             code == 404 -> CheckOutcome.Missing(site.name)
-            else -> CheckOutcome.Error(site.name, "HTTP $code")
+            else -> CheckOutcome.Error(
+                site = site.name,
+                reason = "HTTP $code",
+                diagnostics = baseDiag.withDetail("HTTP $code"),
+            )
         }
     }
 
@@ -442,7 +492,13 @@ class OsintEngine(
                     null
                 }
                 val retryAfterMs = parseRetryAfterMs(response.header("Retry-After"))
-                return HttpProbe(response.code, body, retryAfterMs)
+                return HttpProbe(
+                    code = response.code,
+                    body = body,
+                    retryAfterMs = retryAfterMs,
+                    finalUrl = response.request.url.toString(),
+                    redirectCount = countRedirects(response),
+                )
             }
         } finally {
             completionHandle?.dispose()
@@ -464,6 +520,7 @@ class OsintEngine(
                 url = it.url,
                 categories = categoriesByName[it.site].orEmpty(),
                 confidence = HitConfidence.CONFIRMED,
+                diagnostics = it.diagnostics,
             )
         }
         val uncertain = results.mapNotNull { it as? CheckOutcome.Uncertain }.map {
@@ -472,10 +529,20 @@ class OsintEngine(
                 url = it.url,
                 categories = categoriesByName[it.site].orEmpty(),
                 confidence = HitConfidence.UNCERTAIN,
+                diagnostics = it.diagnostics,
             )
         }
         val notFound = results.mapNotNull { it as? CheckOutcome.Missing }.map { it.site }
-        val errors = results.mapNotNull { it as? CheckOutcome.Error }.map { "${it.site}: ${it.reason}" }
+        val errors = results.mapNotNull { it as? CheckOutcome.Error }.map { err ->
+            val diag = err.diagnostics?.formatBrief()?.takeIf { it.isNotBlank() }
+            if (diag != null && !diag.contains(err.reason)) {
+                "${err.site}: $diag"
+            } else if (diag != null) {
+                "${err.site}: $diag"
+            } else {
+                "${err.site}: ${err.reason}"
+            }
+        }
         return OsintResult.UsernameReport(
             username = username,
             found = found.sortedBy { it.site },
@@ -487,17 +554,43 @@ class OsintEngine(
         )
     }
 
-    private data class HttpProbe(
+    internal data class HttpProbe(
         val code: Int,
         val body: String?,
         val retryAfterMs: Long? = null,
-    )
+        val finalUrl: String? = null,
+        val redirectCount: Int = 0,
+    ) {
+        fun toDiagnostics(detail: String? = null): HttpDiagnostics =
+            HttpDiagnostics(
+                httpCode = code,
+                finalUrl = finalUrl,
+                redirectCount = redirectCount,
+                detail = detail,
+            )
+    }
 
     internal sealed class CheckOutcome {
-        data class Found(val site: String, val url: String) : CheckOutcome()
-        data class Uncertain(val site: String, val url: String, val reason: String) : CheckOutcome()
+        data class Found(
+            val site: String,
+            val url: String,
+            val diagnostics: HttpDiagnostics? = null,
+        ) : CheckOutcome()
+
+        data class Uncertain(
+            val site: String,
+            val url: String,
+            val reason: String,
+            val diagnostics: HttpDiagnostics? = null,
+        ) : CheckOutcome()
+
         data class Missing(val site: String) : CheckOutcome()
-        data class Error(val site: String, val reason: String) : CheckOutcome()
+
+        data class Error(
+            val site: String,
+            val reason: String,
+            val diagnostics: HttpDiagnostics? = null,
+        ) : CheckOutcome()
     }
 
     companion object {
@@ -505,6 +598,16 @@ class OsintEngine(
         private const val INITIAL_RETRY_DELAY_MS = 400L
         private const val MAX_RETRY_DELAY_MS = 3500L
         private val RETRYABLE_CODES = setOf(408, 425, 429, 500, 502, 503, 504)
+
+        internal fun countRedirects(response: Response): Int {
+            var count = 0
+            var prior = response.priorResponse
+            while (prior != null) {
+                count++
+                prior = prior.priorResponse
+            }
+            return count
+        }
 
         internal fun nextDelay(current: Long): Long =
             (current * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
