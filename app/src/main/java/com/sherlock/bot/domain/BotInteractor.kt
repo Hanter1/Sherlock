@@ -1,24 +1,70 @@
 package com.sherlock.bot.domain
 
 import com.sherlock.bot.data.BotAction
+import com.sherlock.bot.data.ChatHistoryCodec
 import com.sherlock.bot.data.ChatMessage
+import com.sherlock.bot.data.OsintCatalog
 import com.sherlock.bot.data.OsintEngine
 import com.sherlock.bot.data.OsintResult
 import com.sherlock.bot.data.SearchMode
+import com.sherlock.bot.data.SiteCategories
+import com.sherlock.bot.data.SiteCheckProgress
+import com.sherlock.bot.data.SiteCheckStatus
+import com.sherlock.bot.data.SiteHit
+import com.sherlock.bot.data.UsernameReportFilter
+import java.util.LinkedHashMap
 import java.util.UUID
 
 class BotInteractor(
     private val osint: OsintEngine = OsintEngine(),
+    private val isOnline: () -> Boolean = { true },
 ) {
+    /** Last username scan/report — convenience fallback; prefer [reportFor]. */
+    var lastUsernameReport: OsintResult.UsernameReport? = null
+        private set
+
+    private val reportsById = LinkedHashMap<String, OsintResult.UsernameReport>()
+
+    fun reportFor(reportId: String?): OsintResult.UsernameReport? {
+        if (!reportId.isNullOrBlank()) {
+            reportsById[reportId]?.let { return it }
+        }
+        return lastUsernameReport
+    }
+
+    fun allReports(): Map<String, OsintResult.UsernameReport> = reportsById.toMap()
+
+    fun replaceReports(reports: Map<String, OsintResult.UsernameReport>) {
+        reportsById.clear()
+        reportsById.putAll(reports)
+        lastUsernameReport = reports.values.lastOrNull()
+    }
+
+    fun clearReports() {
+        reportsById.clear()
+        lastUsernameReport = null
+    }
+
+    private fun putReport(reportId: String, report: OsintResult.UsernameReport) {
+        val isNew = !reportsById.containsKey(reportId)
+        reportsById[reportId] = report
+        if (isNew) {
+            lastUsernameReport = report
+        }
+        while (reportsById.size > ChatHistoryCodec.MAX_REPORTS) {
+            val oldest = reportsById.keys.firstOrNull() ?: break
+            reportsById.remove(oldest)
+        }
+    }
     fun welcome(): ChatMessage = bot(
         text = """
-            Sherlock Bot — OSINT-помощник в виде отдельного приложения.
+            Sherlock Bot — OSINT-помощник с упором на Беларусь.
             
-            Ищу только по открытым источникам (публичные профили, эвристики).
+            Ищу только по открытым источникам (публичные профили, DNS, эвристики).
             Закрытые базы, утечки и «пробив ФИО владельца номера» здесь не используются.
             
             Выберите действие или напишите команду:
-            /start · /help · /username · /phone · /email · /name
+            /start · /help · /username · /compare · /phone · /email · /name · /about
         """.trimIndent(),
         actions = mainMenu(),
     )
@@ -26,25 +72,46 @@ class BotInteractor(
     fun help(): ChatMessage = bot(
         text = """
             Команды:
-            /username <ник> — проверить ник на 20 публичных площадках
-            /phone <номер> — нормализация + эвристика оператора (+7)
-            /email <почта> — разбор адреса
-            /name <ФИО> — ссылки на публичный поиск
+            /username <ник> — проверка на площадках (Δ с прошлого скана при повторе)
+            /compare <ник1> <ник2> — общие / только A / только B
+            /phone <номер> — Беларусь +375 (приоритет), также +7/+380/+1/+44
+            /email <почта> — MX + SPF/DMARC + Gravatar
+            /name <ФИО> — поиск Google BY / Yandex BY / VK
+            /clear — очистить историю чата
+            /about — версия приложения и каталогов
+            /settings — параллелизм, Instagram/X, кэш, remote-каталог
             
-            Можно нажать кнопку меню или просто прислать ник/номер — я попробую угадать тип запроса.
+            Под отчётом: фильтры, «Закрепить», «Повторить без кэша», экспорт MD/JSON.
+            Поиск по истории — лупа в шапке.
+            Каталог площадок: ${siteCount()} шт. (${OsintCatalog.info().source})
         """.trimIndent(),
         actions = mainMenu(),
     )
 
     fun askFor(mode: SearchMode): ChatMessage = when (mode) {
         SearchMode.USERNAME -> bot("Пришлите никнейм (без @ или с @). Пример: `durov`")
-        SearchMode.PHONE -> bot("Пришлите телефон. Пример: `+79001234567`")
+        SearchMode.PHONE -> bot("Пришлите телефон. Пример РБ: `+375291234567` (также +7 / +380 / +1 / +44)")
         SearchMode.EMAIL -> bot("Пришлите email. Пример: `name@mail.ru`")
-        SearchMode.FULL_NAME -> bot("Пришлите ФИО. Пример: `Иванов Иван`")
+        SearchMode.FULL_NAME -> bot("Пришлите ФИО. Пример: `Іваноў Іван` или `Иванов Иван`")
+        SearchMode.COMPARE -> bot("Пришлите два ника через пробел. Пример: `durov telegram`")
         SearchMode.NONE -> help()
     }
 
-    suspend fun handleUserText(text: String, pendingMode: SearchMode): Pair<List<ChatMessage>, SearchMode> {
+    fun historyCleared(): ChatMessage = bot(
+        text = "История очищена. Начнём заново.",
+        actions = mainMenu(),
+    )
+
+    fun offlineMessage(): ChatMessage = bot(
+        text = "Нет сети. Подключитесь к интернету и повторите запрос.\n\nОфлайн доступны: /phone и /name (локально).",
+        actions = mainMenu(),
+    )
+
+    suspend fun handleUserText(
+        text: String,
+        pendingMode: SearchMode,
+        onScanProgress: suspend (SiteCheckProgress) -> Unit = {},
+    ): Pair<List<ChatMessage>, SearchMode> {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return emptyList<ChatMessage>() to pendingMode
 
@@ -53,13 +120,24 @@ class BotInteractor(
                 return listOf(welcome()) to SearchMode.NONE
             trimmed.equals("/help", true) || trimmed.equals("помощь", true) ->
                 return listOf(help()) to SearchMode.NONE
+            trimmed.equals("/about", true) || trimmed.equals("о приложении", true) ->
+                return emptyList<ChatMessage>() to SearchMode.NONE
+            trimmed.equals("/settings", true) || trimmed.equals("настройки", true) ->
+                return emptyList<ChatMessage>() to SearchMode.NONE
+            trimmed.equals("/clear", true) || trimmed.equals("очистить", true) ->
+                return listOf(historyCleared()) to SearchMode.NONE
             trimmed.startsWith("/username", true) -> {
                 val arg = trimmed.substringAfter(" ", "").trim()
                 return if (arg.isBlank()) {
                     listOf(askFor(SearchMode.USERNAME)) to SearchMode.USERNAME
                 } else {
-                    listOf(formatResult(osint.searchUsername(arg))) to SearchMode.NONE
+                    requireOnline()?.let { return listOf(it) to SearchMode.NONE }
+                    listOf(formatResult(osint.searchUsername(arg, onScanProgress))) to SearchMode.NONE
                 }
+            }
+            trimmed.startsWith("/compare", true) -> {
+                val arg = trimmed.substringAfter(" ", "").trim()
+                return handleCompareArg(arg, onScanProgress)
             }
             trimmed.startsWith("/phone", true) -> {
                 val arg = trimmed.substringAfter(" ", "").trim()
@@ -74,6 +152,7 @@ class BotInteractor(
                 return if (arg.isBlank()) {
                     listOf(askFor(SearchMode.EMAIL)) to SearchMode.EMAIL
                 } else {
+                    requireOnline()?.let { return listOf(it) to SearchMode.NONE }
                     listOf(formatResult(osint.analyzeEmail(arg))) to SearchMode.NONE
                 }
             }
@@ -87,18 +166,27 @@ class BotInteractor(
             }
         }
 
-        val mode = pendingMode.takeIf { it != SearchMode.NONE } ?: detectMode(trimmed)
+        val mode = pendingMode.takeIf { it != SearchMode.NONE } ?: QueryClassifier.detectMode(trimmed)
+        if (mode == SearchMode.USERNAME || mode == SearchMode.EMAIL || mode == SearchMode.COMPARE) {
+            requireOnline()?.let { return listOf(it) to SearchMode.NONE }
+        }
+
+        if (mode == SearchMode.COMPARE) {
+            return handleCompareArg(trimmed, onScanProgress)
+        }
+
         val result = runCatching {
             when (mode) {
-                SearchMode.USERNAME -> osint.searchUsername(trimmed)
+                SearchMode.USERNAME -> osint.searchUsername(trimmed, onScanProgress)
                 SearchMode.PHONE -> osint.analyzePhone(trimmed)
                 SearchMode.EMAIL -> osint.analyzeEmail(trimmed)
                 SearchMode.FULL_NAME -> osint.analyzeFullName(trimmed)
-                SearchMode.NONE -> null
+                SearchMode.COMPARE, SearchMode.NONE -> null
             }
         }.fold(
             onSuccess = { it },
             onFailure = {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 return listOf(
                     bot("Не вышло: ${it.message ?: "ошибка"}\n\nПопробуйте ещё раз или /help"),
                 ) to SearchMode.NONE
@@ -117,69 +205,257 @@ class BotInteractor(
         }
     }
 
-    fun handleAction(actionId: String): Pair<ChatMessage, SearchMode> = when (actionId) {
+    fun handleAction(actionId: String): Pair<ChatMessage, SearchMode>? = when (actionId) {
         "username" -> askFor(SearchMode.USERNAME) to SearchMode.USERNAME
+        "compare" -> askFor(SearchMode.COMPARE) to SearchMode.COMPARE
         "phone" -> askFor(SearchMode.PHONE) to SearchMode.PHONE
         "email" -> askFor(SearchMode.EMAIL) to SearchMode.EMAIL
         "name" -> askFor(SearchMode.FULL_NAME) to SearchMode.FULL_NAME
         "help" -> help() to SearchMode.NONE
         "menu" -> welcome() to SearchMode.NONE
+        "about" -> null // ViewModel opens About sheet
+        "settings" -> null // ViewModel opens Settings
+        "clear_history" -> null // handled by ViewModel
+        "report_found", "report_no_errors", "report_full" -> null
+        "rescan", "export_md", "export_json", "pin_report" -> null
         else -> help() to SearchMode.NONE
     }
 
-    private fun detectMode(text: String): SearchMode = when {
-        text.contains("@") && text.contains(".") && !text.startsWith("@") -> SearchMode.EMAIL
-        text.filter { it.isDigit() }.length >= 10 -> SearchMode.PHONE
-        text.trim().split(Regex("\\s+")).size >= 2 && text.any { it.isCyrillicLetter() || it.isLetter() } &&
-            text.any { it.isWhitespace() } -> SearchMode.FULL_NAME
-        text.removePrefix("@").matches(Regex("^[A-Za-z0-9._-]{2,32}$")) -> SearchMode.USERNAME
-        else -> SearchMode.NONE
+    private suspend fun handleCompareArg(
+        arg: String,
+        onScanProgress: suspend (SiteCheckProgress) -> Unit,
+    ): Pair<List<ChatMessage>, SearchMode> {
+        if (arg.isBlank()) {
+            return listOf(askFor(SearchMode.COMPARE)) to SearchMode.COMPARE
+        }
+        val parts = arg.split(Regex("\\s+")).map { it.removePrefix("@") }.filter { it.isNotBlank() }
+        if (parts.size < 2) {
+            return listOf(
+                bot("Нужны два ника. Пример: `/compare durov telegram`"),
+            ) to SearchMode.COMPARE
+        }
+        requireOnline()?.let { return listOf(it) to SearchMode.NONE }
+        val a = parts[0]
+        val b = parts[1]
+        if (a.equals(b, ignoreCase = true)) {
+            return listOf(bot("Ники должны отличаться.")) to SearchMode.NONE
+        }
+        return listOf(formatResult(osint.compareUsernames(a, b, onScanProgress))) to SearchMode.NONE
     }
 
-    private fun formatResult(result: OsintResult): ChatMessage = when (result) {
-        is OsintResult.UsernameReport -> {
-            val body = buildString {
-                appendLine("Отчёт по нику `${result.username}`")
-                appendLine("Проверено площадок: ${result.found.size + result.notFound.size + result.errors.size}")
-                appendLine("Найдено: *${result.found.size}* · нет: ${result.notFound.size} · ошибки: ${result.errors.size}")
-                appendLine("Время: ${result.elapsedMs} мс")
+    suspend fun rescanUsername(
+        username: String,
+        onScanProgress: suspend (SiteCheckProgress) -> Unit = {},
+    ): ChatMessage {
+        requireOnline()?.let { return it }
+        return formatResult(osint.searchUsername(username, onScanProgress, bypassCache = true))
+    }
+
+    fun clearUsernameCaches() {
+        osint.clearUsernameCaches()
+    }
+
+    fun usernameCacheSize(): Int = osint.usernameCacheSize()
+
+    fun formatScanProgress(username: String, lines: List<String>, done: Int, total: Int): String {
+        return buildString {
+            appendLine("Сканирую `$username`… $done/$total")
+            appendLine("Нажмите ■ Стоп, чтобы прервать")
+            if (lines.isNotEmpty()) {
                 appendLine()
-                if (result.found.isNotEmpty()) {
-                    appendLine("Найдены профили:")
-                    result.found.forEach { appendLine("• ${it.site}: ${it.url}") }
-                    appendLine()
-                } else {
-                    appendLine("Публичные профили не найдены.")
-                    appendLine()
-                }
-                if (result.errors.isNotEmpty()) {
-                    appendLine("Недоступно сейчас:")
-                    result.errors.take(5).forEach { appendLine("• $it") }
-                    if (result.errors.size > 5) appendLine("• …ещё ${result.errors.size - 5}")
-                }
-            }.trim()
-            bot(body, actions = mainMenu())
+                lines.takeLast(12).forEach { appendLine(it) }
+            }
+        }.trim()
+    }
+
+    fun progressLine(progress: SiteCheckProgress): String = when (progress.status) {
+        SiteCheckStatus.FOUND -> "✓ ${progress.site}"
+        SiteCheckStatus.MISSING -> "· ${progress.site} — нет"
+        SiteCheckStatus.ERROR -> "? ${progress.site} — ${progress.reason ?: "ошибка"}"
+    }
+
+    fun cancelledScanMessage(
+        username: String,
+        progress: List<SiteCheckProgress>,
+    ): ChatMessage {
+        if (progress.isEmpty()) {
+            return bot("Операция остановлена.", actions = mainMenu())
         }
+        val found = progress.filter { it.status == SiteCheckStatus.FOUND }
+        val missing = progress.count { it.status == SiteCheckStatus.MISSING }
+        val errors = progress.count { it.status == SiteCheckStatus.ERROR }
+        val body = buildString {
+            appendLine("—— Сводка ——")
+            appendLine("Скан остановлен · `$username`")
+            appendLine("Проверено: ${progress.size} · найдено: *${found.size}* · нет: $missing · ошибки: $errors")
+            appendLine()
+            if (found.isNotEmpty()) {
+                appendLine("Уже найдены:")
+                found.forEach { p ->
+                    appendLine("• ${p.site}${p.url?.let { ": $it" } ?: ""}")
+                }
+            } else {
+                appendLine("До остановки публичные профили не найдены.")
+            }
+        }.trim()
+        return bot(body, actions = reportActions())
+    }
+
+    fun formatUsernameReport(
+        result: OsintResult.UsernameReport,
+        filter: UsernameReportFilter = UsernameReportFilter.FULL,
+        reportId: String = UUID.randomUUID().toString(),
+    ): ChatMessage {
+        putReport(reportId, result)
+        val total = result.found.size + result.notFound.size + result.errors.size
+        val body = buildString {
+            appendLine("—— Сводка ——")
+            when {
+                result.fromCache -> appendLine("Ник `${result.username}` · из кэша")
+                result.cancelled -> appendLine("Скан остановлен · частичный отчёт по `${result.username}`")
+                else -> appendLine("Ник `${result.username}`")
+            }
+            appendLine(
+                "Найдено: *${result.found.size}* · нет: ${result.notFound.size} · " +
+                    "ошибки: ${result.errors.size} · всего: $total",
+            )
+            if (!result.fromCache) {
+                appendLine("Время: ${SiteCategories.formatElapsed(result.elapsedMs)}")
+            }
+            appendCategoryBreakdown(result.found)
+            result.previousDiff?.let {
+                appendLine()
+                appendLine(it)
+            }
+            appendLine()
+
+            when (filter) {
+                UsernameReportFilter.FOUND_ONLY -> {
+                    appendLine("Фильтр: только найденные")
+                    appendLine()
+                }
+                UsernameReportFilter.HIDE_ERRORS -> {
+                    appendLine("Фильтр: без ошибок / блокировок")
+                    appendLine()
+                }
+                UsernameReportFilter.FULL -> Unit
+            }
+
+            if (result.found.isNotEmpty()) {
+                appendLine("Найдены профили:")
+                appendFoundGrouped(result.found)
+                appendLine()
+            } else {
+                appendLine("Публичные профили не найдены.")
+                appendLine()
+            }
+
+            if (filter == UsernameReportFilter.FULL && result.errors.isNotEmpty()) {
+                appendLine("Недоступно / блок:")
+                result.errors.take(8).forEach { appendLine("• $it") }
+                if (result.errors.size > 8) appendLine("• …ещё ${result.errors.size - 8}")
+            }
+        }.trim()
+        return bot(body, actions = usernameReportActions(), reportId = reportId)
+    }
+
+    private fun StringBuilder.appendCategoryBreakdown(found: List<SiteHit>) {
+        if (found.isEmpty()) return
+        val counts = linkedMapOf<String, Int>()
+        for (hit in found) {
+            val tags = hit.categories.ifEmpty { listOf("other") }
+            for (tag in tags) {
+                val label = SiteCategories.label(tag)
+                counts[label] = (counts[label] ?: 0) + 1
+            }
+        }
+        if (counts.isNotEmpty()) {
+            appendLine(
+                "По категориям: " + counts.entries.joinToString(" · ") { "${it.key} ${it.value}" },
+            )
+        }
+    }
+
+    private fun StringBuilder.appendFoundGrouped(found: List<SiteHit>) {
+        val groups = linkedMapOf<String, MutableList<SiteHit>>()
+        for (hit in found) {
+            val key = hit.categories.firstOrNull()?.let { SiteCategories.label(it) } ?: "прочее"
+            groups.getOrPut(key) { mutableListOf() }.add(hit)
+        }
+        for ((label, hits) in groups) {
+            appendLine("[$label]")
+            hits.forEach { appendLine("• ${it.site}: ${it.url}") }
+        }
+    }
+
+    private fun requireOnline(): ChatMessage? =
+        if (isOnline()) null else offlineMessage()
+
+    private fun siteCount(): Int = runCatching { OsintCatalog.usernameSites.size }.getOrDefault(0)
+
+    fun formatResult(result: OsintResult): ChatMessage = when (result) {
+        is OsintResult.UsernameReport -> formatUsernameReport(result, UsernameReportFilter.FULL)
         is OsintResult.InfoReport -> bot(
             "${result.title}\n\n${result.body}",
-            actions = mainMenu(),
+            actions = reportActions(),
         )
+    }
+
+    fun filterFromAction(actionId: String): UsernameReportFilter? = when (actionId) {
+        "report_found" -> UsernameReportFilter.FOUND_ONLY
+        "report_no_errors" -> UsernameReportFilter.HIDE_ERRORS
+        "report_full" -> UsernameReportFilter.FULL
+        else -> null
     }
 
     private fun mainMenu(): List<BotAction> = listOf(
         BotAction("username", "Никнейм"),
+        BotAction("compare", "Сравнить"),
         BotAction("phone", "Телефон"),
         BotAction("email", "Email"),
         BotAction("name", "ФИО"),
         BotAction("help", "Помощь"),
+        BotAction("settings", "Настройки"),
+        BotAction("about", "О приложении"),
+        BotAction("clear_history", "Очистить чат"),
     )
 
-    private fun bot(text: String, actions: List<BotAction> = emptyList()) = ChatMessage(
+    private fun usernameReportActions(): List<BotAction> = listOf(
+        BotAction("rescan", "Повторить без кэша"),
+        BotAction("pin_report", "Закрепить"),
+        BotAction("report_found", "Только найденные"),
+        BotAction("report_no_errors", "Без ошибок"),
+        BotAction("report_full", "Полный отчёт"),
+        BotAction("export_md", "Экспорт MD"),
+        BotAction("export_json", "Экспорт JSON"),
+        BotAction("share", "Поделиться"),
+        BotAction("copy", "Копировать"),
+        BotAction("username", "Никнейм"),
+        BotAction("clear_history", "Очистить чат"),
+    )
+
+    private fun reportActions(): List<BotAction> = listOf(
+        BotAction("share", "Поделиться"),
+        BotAction("copy", "Копировать"),
+        BotAction("export_md", "Экспорт MD"),
+        BotAction("pin_report", "Закрепить"),
+        BotAction("username", "Никнейм"),
+        BotAction("compare", "Сравнить"),
+        BotAction("phone", "Телефон"),
+        BotAction("email", "Email"),
+        BotAction("name", "ФИО"),
+        BotAction("clear_history", "Очистить чат"),
+    )
+
+    private fun bot(
+        text: String,
+        actions: List<BotAction> = emptyList(),
+        reportId: String? = null,
+    ) = ChatMessage(
         id = UUID.randomUUID().toString(),
         text = text,
         fromBot = true,
         actions = actions,
+        reportId = reportId,
     )
-
-    private fun Char.isCyrillicLetter(): Boolean = this in '\u0400'..'\u04FF'
 }

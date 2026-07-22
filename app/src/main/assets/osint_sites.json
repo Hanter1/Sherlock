@@ -1,0 +1,654 @@
+{
+  "version": 5,
+  "updated": "2026-07",
+  "sites": [
+    {
+      "name": "GitHub",
+      "urlTemplate": "https://github.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "GitLab",
+      "urlTemplate": "https://gitlab.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Sign in · GitLab",
+        "This user doesn't exist"
+      ],
+      "useHead": false,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Bitbucket",
+      "urlTemplate": "https://bitbucket.org/{user}/",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Codeberg",
+      "urlTemplate": "https://codeberg.org/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Reddit",
+      "urlTemplate": "https://www.reddit.com/user/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Sorry, nobody on Reddit goes by that name",
+        "page not found"
+      ],
+      "useHead": false,
+      "categories": [
+        "social"
+      ],
+      "rateLimitMs": 400
+    },
+    {
+      "name": "Telegram",
+      "urlTemplate": "https://t.me/{user}",
+      "okCodes": [
+        200
+      ],
+      "errorCodes": [],
+      "errorBodyMarkers": [
+        "If you have <strong>Telegram",
+        "tgme_icon_user"
+      ],
+      "okBodyMarkers": [
+        "tgme_page_title",
+        "tgme_page_photo"
+      ],
+      "useHead": false,
+      "categories": [
+        "social"
+      ],
+      "rateLimitMs": 150
+    },
+    {
+      "name": "VK",
+      "urlTemplate": "https://vk.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "page_not_found",
+        "service_msg_null"
+      ],
+      "okBodyMarkers": [
+        "owner_id",
+        "wall_module",
+        "screen_name"
+      ],
+      "useHead": false,
+      "categories": [
+        "social"
+      ],
+      "rateLimitMs": 200
+    },
+    {
+      "name": "Habr",
+      "urlTemplate": "https://habr.com/ru/users/{user}/",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "DeviantArt",
+      "urlTemplate": "https://www.deviantart.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "DeviantArt: 404",
+        "The page you are looking for doesn't exist"
+      ],
+      "useHead": false,
+      "categories": [
+        "media",
+        "design"
+      ]
+    },
+    {
+      "name": "Pinterest",
+      "urlTemplate": "https://www.pinterest.com/{user}/",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Sorry! We couldn't find that page"
+      ],
+      "useHead": false,
+      "categories": [
+        "media"
+      ]
+    },
+    {
+      "name": "Twitch",
+      "urlTemplate": "https://www.twitch.tv/{user}",
+      "okCodes": [
+        200
+      ],
+      "errorCodes": [],
+      "errorBodyMarkers": [],
+      "okBodyMarkers": [
+        "isLiveBroadcast",
+        "og:video",
+        "twitter:title"
+      ],
+      "useHead": false,
+      "categories": [
+        "gaming",
+        "media"
+      ],
+      "rateLimitMs": 400
+    },
+    {
+      "name": "YouTube",
+      "urlTemplate": "https://www.youtube.com/@{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "This page isn't available",
+        "This channel does not exist"
+      ],
+      "okBodyMarkers": [
+        "channelId",
+        "og:video:tag",
+        "subscriberCountText"
+      ],
+      "useHead": false,
+      "categories": [
+        "media"
+      ],
+      "rateLimitMs": 300
+    },
+    {
+      "name": "Steam",
+      "urlTemplate": "https://steamcommunity.com/id/{user}",
+      "errorCodes": [],
+      "errorBodyMarkers": [
+        "The specified profile could not be found",
+        "g_rgProfileData = {}"
+      ],
+      "okBodyMarkers": [
+        "steamID64",
+        "actual_persona_name"
+      ],
+      "useHead": false,
+      "categories": [
+        "gaming"
+      ]
+    },
+    {
+      "name": "About.me",
+      "urlTemplate": "https://about.me/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "social"
+      ]
+    },
+    {
+      "name": "Keybase",
+      "urlTemplate": "https://keybase.io/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Roblox",
+      "urlTemplate": "https://www.roblox.com/users/profile?username={user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Page cannot be found or no longer exists"
+      ],
+      "useHead": false,
+      "categories": [
+        "gaming"
+      ]
+    },
+    {
+      "name": "TikTok",
+      "urlTemplate": "https://www.tiktok.com/@{user}",
+      "errorCodes": [],
+      "blockBodyMarkers": [
+        "_wafchallenge",
+        "SlardarWAF",
+        "slardar_us_waf"
+      ],
+      "errorBodyMarkers": [
+        "Couldn't find this account",
+        "page-not-available",
+        "statusCode\":10221",
+        "statusCode\":10222"
+      ],
+      "okBodyMarkers": [
+        "uniqueId",
+        "\"userInfo\"",
+        "followerCount",
+        "__UNIVERSAL_DATA_FOR_REHYDRATION__"
+      ],
+      "useHead": false,
+      "categories": [
+        "media",
+        "social"
+      ],
+      "rateLimitMs": 800
+    },
+    {
+      "name": "Medium",
+      "urlTemplate": "https://medium.com/@{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "PAGE NOT FOUND",
+        "Out of nothing, something."
+      ],
+      "useHead": false,
+      "categories": [
+        "media"
+      ]
+    },
+    {
+      "name": "SoundCloud",
+      "urlTemplate": "https://soundcloud.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "media"
+      ]
+    },
+    {
+      "name": "Flickr",
+      "urlTemplate": "https://www.flickr.com/people/{user}/",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "media"
+      ]
+    },
+    {
+      "name": "HackerNoon",
+      "urlTemplate": "https://hackernoon.com/u/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "ProductHunt",
+      "urlTemplate": "https://www.producthunt.com/@{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "creator"
+      ]
+    },
+    {
+      "name": "Linktree",
+      "urlTemplate": "https://linktr.ee/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "This Linktree is currently unavailable",
+        "The page you're looking for doesn't exist"
+      ],
+      "useHead": false,
+      "categories": [
+        "social",
+        "creator"
+      ]
+    },
+    {
+      "name": "npm",
+      "urlTemplate": "https://www.npmjs.com/~{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "PyPI",
+      "urlTemplate": "https://pypi.org/user/{user}/",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "DockerHub",
+      "urlTemplate": "https://hub.docker.com/u/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "\"message\":\"user not found\"",
+        "could not find user"
+      ],
+      "useHead": false,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "LeetCode",
+      "urlTemplate": "https://leetcode.com/u/{user}/",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Page Not Found",
+        "user does not exist"
+      ],
+      "okBodyMarkers": [
+        "userProfilePublic",
+        "username"
+      ],
+      "useHead": false,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Codeforces",
+      "urlTemplate": "https://codeforces.com/profile/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Codeforces could not find"
+      ],
+      "okBodyMarkers": [
+        "userbox",
+        "Info"
+      ],
+      "useHead": false,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Lichess",
+      "urlTemplate": "https://lichess.org/@/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "gaming"
+      ]
+    },
+    {
+      "name": "Chess.com",
+      "urlTemplate": "https://www.chess.com/member/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Page not found",
+        "User not found"
+      ],
+      "okBodyMarkers": [
+        "user-username",
+        "profile-header"
+      ],
+      "useHead": false,
+      "categories": [
+        "gaming"
+      ]
+    },
+    {
+      "name": "Bluesky",
+      "urlTemplate": "https://bsky.app/profile/{user}",
+      "errorCodes": [
+        400,
+        404
+      ],
+      "errorBodyMarkers": [
+        "Not found",
+        "Profile not found"
+      ],
+      "okBodyMarkers": [
+        "profileView",
+        "bsky.app/profile"
+      ],
+      "useHead": false,
+      "categories": [
+        "social"
+      ]
+    },
+    {
+      "name": "Patreon",
+      "urlTemplate": "https://www.patreon.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Sorry, this page isn't here"
+      ],
+      "okBodyMarkers": [
+        "creator",
+        "patreon-media"
+      ],
+      "useHead": false,
+      "categories": [
+        "creator"
+      ]
+    },
+    {
+      "name": "Instagram",
+      "urlTemplate": "https://www.instagram.com/{user}/",
+      "errorCodes": [],
+      "blockBodyMarkers": [
+        "loginForm",
+        "AuthLoginModule",
+        "challenge_required",
+        "\"status\":\"fail\"",
+        "LoginAndSignupPage"
+      ],
+      "errorBodyMarkers": [
+        "Sorry, this page isn't available",
+        "The link you followed may be broken",
+        "Page Not Found"
+      ],
+      "okBodyMarkers": [
+        "profilePage_",
+        "\"username\"",
+        "ProfilePage",
+        "biography"
+      ],
+      "useHead": false,
+      "categories": [
+        "social"
+      ],
+      "rateLimitMs": 1000
+    },
+    {
+      "name": "X",
+      "urlTemplate": "https://x.com/{user}",
+      "errorCodes": [],
+      "blockBodyMarkers": [
+        "Something went wrong",
+        "Rate limit",
+        "Could not log you in now",
+        "captcha",
+        "To continue, please log in"
+      ],
+      "errorBodyMarkers": [
+        "This account doesn’t exist",
+        "This account doesn't exist",
+        "Try searching for another"
+      ],
+      "okBodyMarkers": [
+        "\"screen_name\"",
+        "UserProfileHeader",
+        "profile_button"
+      ],
+      "useHead": false,
+      "categories": [
+        "social"
+      ],
+      "rateLimitMs": 1000
+    },
+    {
+      "name": "Dev.to",
+      "urlTemplate": "https://dev.to/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Hashnode",
+      "urlTemplate": "https://hashnode.com/@{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Behance",
+      "urlTemplate": "https://www.behance.net/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Oops! We can't find that page"
+      ],
+      "useHead": false,
+      "categories": [
+        "design"
+      ]
+    },
+    {
+      "name": "Dribbble",
+      "urlTemplate": "https://dribbble.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "design"
+      ]
+    },
+    {
+      "name": "Replit",
+      "urlTemplate": "https://replit.com/@{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "Kaggle",
+      "urlTemplate": "https://www.kaggle.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "HuggingFace",
+      "urlTemplate": "https://huggingface.co/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "dev"
+      ]
+    },
+    {
+      "name": "BuyMeACoffee",
+      "urlTemplate": "https://buymeacoffee.com/{user}",
+      "errorCodes": [
+        404
+      ],
+      "useHead": true,
+      "categories": [
+        "creator"
+      ]
+    },
+    {
+      "name": "OK.ru",
+      "urlTemplate": "https://ok.ru/{user}",
+      "errorCodes": [
+        404
+      ],
+      "errorBodyMarkers": [
+        "Страница не найдена",
+        "page not found"
+      ],
+      "categories": [
+        "social"
+      ],
+      "useHead": false,
+      "rateLimitMs": 250
+    }
+  ]
+}

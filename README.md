@@ -1,13 +1,36 @@
 # Sherlock Bot
 
-Мобильное Android-приложение с UX как у OSINT Telegram-бота: чат, кнопки-меню, отчёты по запросу.
+Мобильное Android-приложение OSINT: тёмный кабинет (режимы, запрос, отчёт, журнал), открытые источники.
 
 ## Что умеет
 
-- **Поиск по никнейму** — проверка публичных профилей на ~20 площадках (GitHub, GitLab, Reddit, Telegram, VK, TikTok и др.)
-- **Телефон** — нормализация `+7` и эвристика оператора по DEF-коду
-- **Email** — разбор адреса
-- **ФИО** — ссылки на публичный поиск (Google / Yandex / VK)
+- **Кабинет** — тёмный console UI: вкладки режимов, поле запроса, карточка отчёта, журнал
+- **Поиск по никнейму** — 40+ площадок с категориями и `rateLimitMs` (`osint_sites.json`)
+- **Сравнение ников** — `/compare a b`; **Δ с прошлого скана** при «Повторить без кэша»
+- **Телефон** — приоритет **Беларусь `+375`**, также `+7` / `+380` / `+1` / `+44`
+- **Email** — MX + SPF/DMARC (DoH) + Gravatar
+- **ФИО** — Google BY / Yandex BY / VK
+- **Remote-каталог** — URL в настройках + sha256/version без нового APK
+- **Поиск по истории** — лупа в шапке; закрепление последнего отчёта
+- **Дисклеймер** — при первом запуске; скрытие в «Недавних» (FLAG_SECURE)
+- **Отмена скана** — кнопка «Стоп» во время проверки ника
+- **Сводка + фильтры** — найденные / нет / ошибки + группировка по категориям; кнопки «Только найденные» / «Без ошибок»
+- **Повторить без кэша** — принудительный рескан ника
+- **Экспорт** — Markdown / JSON файл через системный share
+- **Настройки** — параллелизм (3/6/10), Instagram/X вкл/выкл, очистка кэша ников (⚙ / `/settings`)
+- **История** — журнал запросов на устройстве; очистка из журнала / `/clear`
+- **Поделиться / Копировать** — системный шаринг или буфер обмена
+- **Офлайн** — индикатор сети в шапке; ник/email требуют сеть; телефон и ФИО локально
+- **Кэш ника** — сессия + диск (TTL 24 ч)
+- **Retry** — повтор запросов при 429/5xx с backoff
+- **О приложении** — версия APK + версии каталогов (кнопка ℹ / `/about`)
+
+CI: GitHub Actions (`.github/workflows/ci.yml`) — `testDebugUnitTest` + `assembleDebug` (JDK и SDK ставятся в runner; локально не обязательны).  
+Weekly catalog probe: `.github/workflows/catalog-probe.yml` (`scripts/probe_catalog.py`).
+
+Каталоги (без переписывания Kotlin):
+- площадки: `app/src/main/assets/osint_sites.json` (`categories`: dev / social / gaming / media / design / creator)
+- DEF: `app/src/main/assets/def_codes.json`
 
 Приложение **не** подключается к закрытым базам и утечкам. Это легальный OSINT-клиент по открытым источникам.
 
@@ -15,7 +38,7 @@
 
 Kotlin · Jetpack Compose · OkHttp · Coroutines
 
-## Сборка APK
+## Сборка debug APK
 
 Нужны JDK 17 и Android SDK.
 
@@ -25,21 +48,40 @@ set ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
 gradlew.bat assembleDebug
 ```
 
-APK появится здесь:
-
-`app\build\outputs\apk\debug\app-debug.apk`
-
-Установка на устройство:
+APK: `app\build\outputs\apk\debug\app-debug.apk`
 
 ```bat
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
+## Сборка release (R8)
+
+Release включает minify + shrink resources.
+
+1. Создайте keystore (один раз):
+
+```bat
+keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias sherlock
+```
+
+2. Скопируйте `keystore.properties.example` → `keystore.properties` в корне репозитория и заполните пароли / путь к `.jks`.
+
+3. Соберите:
+
+```bat
+gradlew.bat assembleRelease
+```
+
+APK: `app\build\outputs\apk\release\app-release.apk`  
+(если `keystore.properties` нет — APK будет unsigned / потребуется подпись вручную).
+
+`keystore.properties` и `*.jks` в git не коммитятся.
+
 ## Использование
 
 1. Откройте приложение
 2. Нажмите **Никнейм** / **Телефон** / **Email** / **ФИО** или введите команду `/username durov`
-3. Дождитесь отчёта в чате (ссылки кликабельны)
+3. Дождитесь отчёта в чате (ссылки кликабельны; markdown: `code`, *жирный*)
 
 ## Важно
 

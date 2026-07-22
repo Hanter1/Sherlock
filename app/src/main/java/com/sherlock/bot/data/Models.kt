@@ -7,6 +7,8 @@ data class ChatMessage(
     val timestamp: Long = System.currentTimeMillis(),
     val actions: List<BotAction> = emptyList(),
     val isTyping: Boolean = false,
+    /** Links message actions (filter / export / rescan) to a stored [OsintResult.UsernameReport]. */
+    val reportId: String? = null,
 )
 
 data class BotAction(
@@ -20,6 +22,7 @@ enum class SearchMode {
     PHONE,
     EMAIL,
     FULL_NAME,
+    COMPARE,
 }
 
 sealed class OsintResult {
@@ -29,6 +32,10 @@ sealed class OsintResult {
         val notFound: List<String>,
         val errors: List<String>,
         val elapsedMs: Long,
+        val cancelled: Boolean = false,
+        val fromCache: Boolean = false,
+        /** Human-readable Δ vs previous scan of the same nick (if any). */
+        val previousDiff: String? = null,
     ) : OsintResult()
 
     data class InfoReport(
@@ -40,4 +47,20 @@ sealed class OsintResult {
 data class SiteHit(
     val site: String,
     val url: String,
+    val categories: List<String> = emptyList(),
+)
+
+enum class SiteCheckStatus {
+    FOUND,
+    MISSING,
+    ERROR,
+}
+
+data class SiteCheckProgress(
+    val site: String,
+    val status: SiteCheckStatus,
+    val url: String? = null,
+    val reason: String? = null,
+    val done: Int,
+    val total: Int,
 )

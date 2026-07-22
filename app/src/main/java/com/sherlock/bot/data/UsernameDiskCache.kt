@@ -1,0 +1,168 @@
+package com.sherlock.bot.data
+
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.TimeUnit
+
+/**
+ * Persistent username-report cache with TTL (default 24h).
+ * One JSON file: map of lowercase username → { savedAtMs, report }.
+ */
+class UsernameDiskCache(
+    private val file: File,
+    private val ttlMs: Long = DEFAULT_TTL_MS,
+    private val clock: () -> Long = { System.currentTimeMillis() },
+) {
+    data class Entry(
+        val savedAtMs: Long,
+        val report: OsintResult.UsernameReport,
+    )
+
+    @Synchronized
+    fun get(username: String): OsintResult.UsernameReport? {
+        val key = username.lowercase()
+        val entry = readAll()[key] ?: return null
+        if (clock() - entry.savedAtMs > ttlMs) {
+            removeKey(key)
+            return null
+        }
+        return entry.report
+    }
+
+    @Synchronized
+    fun put(username: String, report: OsintResult.UsernameReport) {
+        if (report.cancelled) return
+        val key = username.lowercase()
+        val all = readAll().toMutableMap()
+        all[key] = Entry(
+            savedAtMs = clock(),
+            report = report.copy(fromCache = false),
+        )
+        writeAll(all)
+    }
+
+    @Synchronized
+    fun remove(username: String) {
+        removeKey(username.lowercase())
+    }
+
+    @Synchronized
+    fun clear() {
+        if (file.exists()) file.delete()
+    }
+
+    @Synchronized
+    fun size(): Int = readAll().count { clock() - it.value.savedAtMs <= ttlMs }
+
+    private fun removeKey(key: String) {
+        val all = readAll().toMutableMap()
+        if (all.remove(key) != null) writeAll(all)
+    }
+
+    private fun readAll(): Map<String, Entry> {
+        if (!file.exists()) return emptyMap()
+        return runCatching {
+            UsernameReportCodec.decodeMap(file.readText())
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun writeAll(map: Map<String, Entry>) {
+        file.parentFile?.mkdirs()
+        val pruned = map.filterValues { clock() - it.savedAtMs <= ttlMs }
+        AtomicFiles.writeText(file, UsernameReportCodec.encodeMap(pruned))
+    }
+
+    companion object {
+        val DEFAULT_TTL_MS: Long = TimeUnit.HOURS.toMillis(24)
+    }
+}
+
+object UsernameReportCodec {
+
+    fun encodeMap(map: Map<String, UsernameDiskCache.Entry>): String {
+        val root = JSONObject()
+        for ((key, entry) in map) {
+            root.put(
+                key,
+                JSONObject()
+                    .put("savedAtMs", entry.savedAtMs)
+                    .put("report", encodeReport(entry.report)),
+            )
+        }
+        return root.toString()
+    }
+
+    fun decodeMap(json: String): Map<String, UsernameDiskCache.Entry> {
+        if (json.isBlank()) return emptyMap()
+        val root = JSONObject(json)
+        return buildMap {
+            for (key in root.keys()) {
+                val obj = root.getJSONObject(key)
+                put(
+                    key,
+                    UsernameDiskCache.Entry(
+                        savedAtMs = obj.getLong("savedAtMs"),
+                        report = decodeReport(obj.getJSONObject("report")),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun encodeReport(report: OsintResult.UsernameReport): JSONObject {
+        return JSONObject()
+            .put("username", report.username)
+            .put("elapsedMs", report.elapsedMs)
+            .put("cancelled", report.cancelled)
+            .put(
+                "found",
+                JSONArray().also { arr ->
+                    report.found.forEach { hit ->
+                        arr.put(
+                            JSONObject()
+                                .put("site", hit.site)
+                                .put("url", hit.url)
+                                .put("categories", JSONArray(hit.categories)),
+                        )
+                    }
+                },
+            )
+            .put("notFound", JSONArray(report.notFound))
+            .put("errors", JSONArray(report.errors))
+            .also { json ->
+                report.previousDiff?.let { json.put("previousDiff", it) }
+            }
+    }
+
+    fun decodeReport(obj: JSONObject): OsintResult.UsernameReport {
+        val foundArr = obj.optJSONArray("found") ?: JSONArray()
+        val found = buildList {
+            for (i in 0 until foundArr.length()) {
+                val hit = foundArr.getJSONObject(i)
+                val cats = hit.optJSONArray("categories")
+                add(
+                    SiteHit(
+                        site = hit.getString("site"),
+                        url = hit.getString("url"),
+                        categories = cats?.toStringList().orEmpty(),
+                    ),
+                )
+            }
+        }
+        return OsintResult.UsernameReport(
+            username = obj.getString("username"),
+            found = found,
+            notFound = (obj.optJSONArray("notFound") ?: JSONArray()).toStringList(),
+            errors = (obj.optJSONArray("errors") ?: JSONArray()).toStringList(),
+            elapsedMs = obj.optLong("elapsedMs", 0L),
+            cancelled = obj.optBoolean("cancelled", false),
+            fromCache = false,
+            previousDiff = obj.optString("previousDiff", "").takeIf { it.isNotBlank() },
+        )
+    }
+
+    private fun JSONArray.toStringList(): List<String> = buildList {
+        for (i in 0 until length()) add(getString(i))
+    }
+}

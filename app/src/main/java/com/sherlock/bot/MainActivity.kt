@@ -8,9 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sherlock.bot.ui.chat.ChatScreen
-import com.sherlock.bot.ui.chat.ChatViewModel
+import com.sherlock.bot.ui.workbench.WorkbenchViewModel
+import com.sherlock.bot.ui.theme.Cabinet
 import com.sherlock.bot.ui.theme.SherlockTheme
+import com.sherlock.bot.ui.workbench.WorkbenchScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -18,9 +19,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SherlockTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    val viewModel: ChatViewModel = viewModel()
-                    ChatScreen(viewModel = viewModel)
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = Cabinet.Bg,
+                ) {
+                    val viewModel: WorkbenchViewModel = viewModel(
+                        factory = WorkbenchViewModel.Factory(application),
+                    )
+                    WorkbenchScreen(viewModel = viewModel)
                 }
             }
         }

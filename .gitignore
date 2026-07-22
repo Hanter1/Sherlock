@@ -13,6 +13,9 @@
 *.aab
 *.jks
 *.keystore
+keystore.properties
 .env
 *.log
 .kotlin/
+.jdk/
+.probe/

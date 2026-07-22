@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="file" path="chat_history.json" />
+    <exclude domain="file" path="username_cache.json" />
+    <exclude domain="file" path="osint_sites_remote.json" />
+    <exclude domain="sharedpref" path="sherlock_settings" />
+</full-backup-content>
