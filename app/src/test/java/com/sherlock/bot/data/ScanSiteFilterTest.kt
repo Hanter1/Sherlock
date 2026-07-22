@@ -47,5 +47,17 @@ class ScanSiteFilterTest {
     fun botProtectedCanBeExcluded() {
         val filtered = ScanSiteFilter.filter(sites, includeBotProtected = false, preset = ScanPreset.ALL)
         assertTrue(filtered.none { it.name in ScanSiteFilter.BOT_PROTECTED_NAMES })
+        assertEquals(
+            listOf("GitHub", "Telegram", "VK", "Habr", "OK.ru", "Twitch", "Behance"),
+            filtered.map { it.name },
+        )
+    }
+
+    @Test
+    fun keepsBotProtectedWhenEnabled() {
+        val filtered = ScanSiteFilter.filter(sites, includeBotProtected = true, preset = ScanPreset.ALL)
+        assertTrue(filtered.any { it.name == "Instagram" })
+        assertTrue(filtered.any { it.name == "X" })
+        assertEquals(sites.size, filtered.size)
     }
 }

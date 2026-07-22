@@ -1,7 +1,6 @@
 package com.sherlock.bot.data
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -52,31 +51,5 @@ class ReportExporterTest {
         assertTrue(file.name.startsWith("alice_"))
         assertTrue(file.name.endsWith(".md"))
         assertEquals("# hi\n", file.readText())
-    }
-}
-
-class ScanSiteFilterTest {
-
-    @Test
-    fun keepsAllWhenEnabled() {
-        val sites = listOf(
-            OsintSite("GitHub", "https://github.com/{user}"),
-            OsintSite("Instagram", "https://instagram.com/{user}"),
-            OsintSite("X", "https://x.com/{user}"),
-        )
-        assertEquals(3, ScanSiteFilter.filter(sites, includeBotProtected = true).size)
-    }
-
-    @Test
-    fun dropsInstagramAndXWhenDisabled() {
-        val sites = listOf(
-            OsintSite("GitHub", "https://github.com/{user}"),
-            OsintSite("Instagram", "https://instagram.com/{user}"),
-            OsintSite("X", "https://x.com/{user}"),
-            OsintSite("Telegram", "https://t.me/{user}"),
-        )
-        val filtered = ScanSiteFilter.filter(sites, includeBotProtected = false)
-        assertEquals(listOf("GitHub", "Telegram"), filtered.map { it.name })
-        assertFalse(filtered.any { it.name in ScanSiteFilter.BOT_PROTECTED_NAMES })
     }
 }
